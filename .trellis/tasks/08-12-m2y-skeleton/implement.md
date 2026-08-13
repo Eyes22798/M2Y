@@ -74,7 +74,7 @@
   - 若有可用 Android 设备/模拟器，安装并进行启动 smoke；否则在 README 标为待验证。
   - iOS 构建明确标为 macOS/EAS 待验证，不宣称通过。
 
-- [ ] J. README、全量检查与提交准备
+- [x] J. README、全量检查与提交准备
   - README 记录环境、命令、三环境、Development Build、FlashList 基准入口、M0 Spike 顺序和待验证项。
   - 运行 full-scope `trellis-check`，修复所有发现后重跑全量命令。
   - 复核没有生产密钥、签名材料、明文业务数据或无边界目录。

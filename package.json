@@ -59,7 +59,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "eslint app src scripts app.config.ts --max-warnings 0",
+    "lint": "eslint app src scripts app.config.ts eslint.config.js jest.setup.js --max-warnings 0",
     "lint:fix": "pnpm lint --fix",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"app/**/*.{ts,tsx}\" \"src/**/*.{ts,tsx}\" \"scripts/**/*.{mjs,js}\" \"*.{json,js,cjs,ts}\" \".github/**/*.yml\"",

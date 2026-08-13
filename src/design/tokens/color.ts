@@ -1,0 +1,16 @@
+export const colors = {
+  canvas: '#F4F2EC',
+  surface: '#FFFEFA',
+  surfaceRaised: '#FFFFFF',
+  ink: '#161A1D',
+  inkMuted: '#62676A',
+  inkFaint: '#94999C',
+  accent: '#F05B35',
+  accentSoft: '#FFE1D7',
+  positive: '#2C7A5B',
+  positiveSoft: '#DDF2E8',
+  waiting: '#9A6A15',
+  waitingSoft: '#F7EBC9',
+  line: '#E1DED5',
+  overlay: 'rgba(22, 26, 29, 0.12)',
+} as const;
