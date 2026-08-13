@@ -1,59 +1,43 @@
-# Component Guidelines
+# Frontend Component Guidelines
 
-> How components are built in this project.
+## Component Boundaries
 
----
+- Expo Router route files compose one feature screen and do not own business rules.
+- Reusable interaction structures belong in `src/design/patterns/`; feature-specific forms remain under their feature.
+- Every pressable requires a user-readable `accessibilityLabel`. Disabled controls expose `accessibilityState` through `MotionPressable`.
+- Decorative motion uses shared tokens and respects system Reduce Motion.
 
-## Overview
+## Cross-Platform Icons
 
-<!--
-Document your project's component conventions here.
+Use `AppIcon` from `src/design/primitives/AppIcon.tsx` instead of importing `SymbolView` in a feature.
 
-Questions to answer:
-- What component patterns do you use?
-- How are props defined?
-- How do you handle composition?
-- What accessibility standards apply?
--->
+```typescript
+<AppIcon color={colors.accent} name="space" size={22} />
+```
 
-(To be filled by the team)
+`AppIconName` is the supported icon contract. Each new name must define:
 
----
+- an SF Symbol for iOS;
+- an exact Material Symbols glyph for Android;
+- a legible text fallback for Web.
 
-## Component Structure
+`expo-symbols` can load without drawing a glyph in an Expo Web preview. The Web fallback is therefore required even when Android export includes the Material Symbols font.
 
-<!-- Standard structure of a component file -->
+## Test Isolation
 
-(To be filled by the team)
+- Jest component tests mock `expo-symbols` as a plain React Native view.
+- Jest flow tests mock `FlashList` as a deterministic list and Reanimated hooks as immediate values.
+- These mocks isolate native initialization only; assertions remain focused on accessibility labels, visible state, typed command results, and navigation.
+- Do not suppress Worklets initialization errors or React `act` warnings. Replace the inappropriate native runtime boundary in the test environment.
 
----
+## Styling
 
-## Props Conventions
-
-<!-- How props should be defined and typed -->
-
-(To be filled by the team)
-
----
-
-## Styling Patterns
-
-<!-- How styles are applied (CSS modules, styled-components, Tailwind, etc.) -->
-
-(To be filled by the team)
-
----
-
-## Accessibility
-
-<!-- A11y requirements and patterns -->
-
-(To be filled by the team)
-
----
+- Repeated colors, spacing, radius, type, and motion values come from `src/design/tokens`.
+- Feature styles may compose tokens but must not introduce a second token object.
+- Validate primary mobile screens at the approximate Figma logical viewport (`390 x 844`) and check browser console warnings during Web visual review.
 
 ## Common Mistakes
 
-<!-- Component-related mistakes your team has made -->
-
-(To be filled by the team)
+- Do not make every Figma state a route; sheets, dialogs, empty states, and errors are component states.
+- Do not initialize form state in an effect solely to react to a newly selected entity. Key the mounted form by entity ID and initialize state from props.
+- Do not present local preview states with labels such as synchronized, encrypted, or confirmed by the other party.

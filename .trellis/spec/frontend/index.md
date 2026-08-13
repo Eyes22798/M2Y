@@ -15,9 +15,9 @@ This directory contains guidelines for frontend development. Fill in each file w
 | Guide | Description | Status |
 |-------|-------------|--------|
 | [Directory Structure](./directory-structure.md) | Expo Router root and layer boundaries | Active |
-| [Component Guidelines](./component-guidelines.md) | Component patterns, props, composition | To fill |
+| [Component Guidelines](./component-guidelines.md) | Component boundaries, cross-platform icons, testing | Active |
 | [Hook Guidelines](./hook-guidelines.md) | Custom hooks, data fetching patterns | To fill |
-| [State Management](./state-management.md) | Local state, global state, server state | To fill |
+| [State Management](./state-management.md) | Local and shared preview-state contracts | Active |
 | [Quality Guidelines](./quality-guidelines.md) | SDK 56, config, native build, and quality contracts | Active |
 | [Type Safety](./type-safety.md) | Type patterns, validation | To fill |
 

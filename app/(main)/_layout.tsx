@@ -1,10 +1,11 @@
 import { Tabs } from 'expo-router';
-import { Text, type ColorValue } from 'react-native';
+import type { ColorValue } from 'react-native';
 
+import { AppIcon, type AppIconName } from '@/design/primitives/AppIcon';
 import { colors, typography } from '@/design/tokens';
 
-function TabGlyph({ value, color }: { value: string; color: ColorValue }) {
-  return <Text style={{ ...typography.title, color }}>{value}</Text>;
+function TabIcon({ color, name }: { color: ColorValue; name: AppIconName }) {
+  return <AppIcon color={color} name={name} size={22} />;
 }
 
 export default function MainLayout() {
@@ -13,33 +14,36 @@ export default function MainLayout() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.accent,
+        tabBarHideOnKeyboard: true,
         tabBarInactiveTintColor: colors.inkFaint,
+        tabBarItemStyle: { paddingVertical: 5 },
+        tabBarLabelStyle: typography.caption,
         tabBarStyle: {
+          height: 68,
           borderTopColor: colors.line,
           backgroundColor: colors.surface,
         },
-        tabBarLabelStyle: typography.caption,
       }}
     >
       <Tabs.Screen
         name="chat"
         options={{
           title: '聊天',
-          tabBarIcon: ({ color }) => <TabGlyph value="↗" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon color={color} name="chat" />,
         }}
       />
       <Tabs.Screen
         name="space"
         options={{
           title: 'Space',
-          tabBarIcon: ({ color }) => <TabGlyph value="◇" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon color={color} name="space" />,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: '设置',
-          tabBarIcon: ({ color }) => <TabGlyph value="··" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon color={color} name="settings" />,
         }}
       />
     </Tabs>

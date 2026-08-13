@@ -1,116 +1,296 @@
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
+import { useMemo, useRef, useState } from 'react';
+import { Keyboard, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MotionPressable } from '@/design/motion/MotionPressable';
-import { MotionReveal } from '@/design/motion/MotionReveal';
-import { ScreenScaffold } from '@/design/primitives/ScreenScaffold';
+import { BottomSheet } from '@/design/patterns/BottomSheet';
+import { AppIcon } from '@/design/primitives/AppIcon';
 import { colors, radius, spacing, typography } from '@/design/tokens';
-
-const messages = [
-  { id: 'm1', side: 'other', body: '报价最终定 8 万吧。' },
-  { id: 'm2', side: 'self', body: '可以，我保存成约定，你确认一下。' },
-] as const;
+import type { Message } from '@/domain/message/types';
+import { SaveToSpaceSheet } from '@/features/save-to-space/components/SaveToSpaceSheet';
+import { usePreviewWorkspace } from '@/stores/preview-workspace/PreviewWorkspaceProvider';
 
 export function ChatScreen() {
-  return (
-    <ScreenScaffold
-      eyebrow="只有我们"
-      title="聊天"
-      description="聊天是入口，重要内容会沉淀到共同 Space。"
-      scroll={false}
-    >
-      <View style={styles.thread}>
-        {messages.map((message, index) => (
-          <MotionReveal delay={index * 70} key={message.id}>
-            <View
-              style={[
-                styles.bubble,
-                message.side === 'self' ? styles.selfBubble : styles.otherBubble,
-              ]}
-            >
-              <Text style={styles.message}>{message.body}</Text>
-            </View>
-          </MotionReveal>
-        ))}
+  const { commands, state } = usePreviewWorkspace();
+  const [draft, setDraft] = useState('');
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const [saveMessageId, setSaveMessageId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState('');
+  const inputRef = useRef<TextInput>(null);
+  const selectedMessage = useMemo(
+    () => state.messages.find((message) => message.id === selectedMessageId) ?? null,
+    [selectedMessageId, state.messages],
+  );
+  const saveMessage = useMemo(
+    () => state.messages.find((message) => message.id === saveMessageId) ?? null,
+    [saveMessageId, state.messages],
+  );
 
-        <MotionReveal delay={180}>
-          <View style={styles.savedCard}>
-            <View style={styles.savedHeader}>
-              <Text style={styles.savedEyebrow}>已保存到 SPACE · 约定</Text>
-              <Text style={styles.waiting}>等待确认</Text>
-            </View>
-            <Text style={styles.savedTitle}>项目报价：¥80,000</Text>
-            <Text style={styles.savedMeta}>关联原始消息 · 双方确认后生效</Text>
-          </View>
-        </MotionReveal>
+  const send = () => {
+    const result = commands.sendMessage(draft);
+    if (!result.ok) return;
+    setDraft('');
+    setFeedback('消息已发送 · 当前设备预览');
+    Keyboard.dismiss();
+  };
+
+  const openSaveSheet = () => {
+    if (!selectedMessage) return;
+    setSaveMessageId(selectedMessage.id);
+    setSelectedMessageId(null);
+  };
+
+  return (
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
+      <View style={styles.header}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>TA</Text>
+        </View>
+        <View style={styles.headerCopy}>
+          <Text style={styles.person}>TA</Text>
+          <Text style={styles.presence}>本地功能预览 · 未连接其他设备</Text>
+        </View>
+        <View style={styles.lockChip}>
+          <AppIcon color={colors.inkMuted} name="lock" size={15} />
+          <Text style={styles.lockText}>未配对</Text>
+        </View>
       </View>
+
+      <View style={styles.previewNotice}>
+        <Text style={styles.previewNoticeText}>消息和 Space 内容会在 App 重启后清空</Text>
+      </View>
+
+      <FlashList
+        contentContainerStyle={styles.threadContent}
+        data={state.messages}
+        keyExtractor={(item) => item.id}
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+        maintainVisibleContentPosition={{ autoscrollToBottomThreshold: 80 }}
+        renderItem={(info) => (
+          <MessageRow info={info} onOpenActions={(message) => setSelectedMessageId(message.id)} />
+        )}
+      />
+
+      {feedback ? (
+        <View style={styles.feedback}>
+          <AppIcon color={colors.accent} name="checkCircle" size={18} />
+          <Text style={styles.feedbackText}>{feedback}</Text>
+        </View>
+      ) : null}
 
       <View style={styles.composer}>
         <TextInput
           accessibilityLabel="消息输入框"
-          placeholder="发一条消息…"
+          maxLength={1000}
+          multiline
+          onChangeText={setDraft}
+          onFocus={() => setFeedback('')}
+          placeholder="说点什么…"
           placeholderTextColor={colors.inkFaint}
+          ref={inputRef}
           style={styles.input}
+          testID="chat-input"
+          value={draft}
         />
-        <MotionPressable accessibilityLabel="发送消息" style={styles.sendButton}>
-          <Text style={styles.sendText}>↑</Text>
+        <MotionPressable
+          accessibilityLabel="发送消息"
+          disabled={!draft.trim()}
+          onPress={send}
+          style={[styles.sendButton, !draft.trim() && styles.sendButtonDisabled]}
+          testID="chat-send"
+        >
+          <AppIcon color={colors.surfaceRaised} name="send" size={22} />
         </MotionPressable>
       </View>
-    </ScreenScaffold>
+
+      <BottomSheet
+        description={selectedMessage?.body ?? ''}
+        onClose={() => setSelectedMessageId(null)}
+        title="消息操作"
+        visible={Boolean(selectedMessage)}
+      >
+        <MotionPressable
+          accessibilityLabel="保存到 Space"
+          onPress={openSaveSheet}
+          style={styles.actionRow}
+        >
+          <View style={styles.actionIcon}>
+            <AppIcon color={colors.accent} name="bookmark" size={20} />
+          </View>
+          <View style={styles.actionCopy}>
+            <Text style={styles.actionTitle}>保存到 Space</Text>
+            <Text style={styles.actionDescription}>创建笔记、待办或约定草稿</Text>
+          </View>
+          <AppIcon color={colors.inkFaint} name="chevronRight" size={18} />
+        </MotionPressable>
+        <Text style={styles.actionHint}>长按任意消息可以再次打开此菜单。</Text>
+      </BottomSheet>
+
+      {saveMessage ? (
+        <SaveToSpaceSheet
+          key={saveMessage.id}
+          message={saveMessage}
+          onClose={() => setSaveMessageId(null)}
+          onSaved={setFeedback}
+          visible
+        />
+      ) : null}
+    </SafeAreaView>
+  );
+}
+
+function MessageRow({
+  info,
+  onOpenActions,
+}: {
+  info: ListRenderItemInfo<Message>;
+  onOpenActions: (message: Message) => void;
+}) {
+  const { item } = info;
+  const isSelf = item.author === 'self';
+
+  return (
+    <View style={[styles.messageRow, isSelf && styles.messageRowSelf]}>
+      <MotionPressable
+        accessibilityLabel={`${isSelf ? '我的' : '对方的'}消息：${item.body}`}
+        onLongPress={() => onOpenActions(item)}
+        onPress={() => onOpenActions(item)}
+        style={[styles.bubble, isSelf ? styles.selfBubble : styles.otherBubble]}
+      >
+        <Text style={[styles.messageText, isSelf && styles.selfMessageText]}>{item.body}</Text>
+        <View style={styles.messageMeta}>
+          <Text style={[styles.time, isSelf && styles.selfTime]}>{item.createdAtLabel}</Text>
+          {item.savedItemIds.length > 0 ? (
+            <View style={styles.savedIndicator}>
+              <AppIcon
+                color={isSelf ? colors.surfaceRaised : colors.accent}
+                name="bookmark"
+                size={12}
+              />
+              <Text style={[styles.savedIndicatorText, isSelf && styles.savedIndicatorTextSelf]}>
+                Space
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </MotionPressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  thread: { flex: 1, justifyContent: 'center', gap: spacing.md },
-  bubble: { maxWidth: '84%', paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
-  otherBubble: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderBottomLeftRadius: radius.sm,
-  },
-  selfBubble: {
-    alignSelf: 'flex-end',
-    backgroundColor: colors.accentSoft,
-    borderRadius: radius.lg,
-    borderBottomRightRadius: radius.sm,
-  },
-  message: { ...typography.body, color: colors.ink },
-  savedCard: {
-    marginTop: spacing.sm,
-    padding: spacing.lg,
-    gap: spacing.sm,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.surfaceRaised,
-  },
-  savedHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm },
-  savedEyebrow: { ...typography.label, color: colors.positive },
-  waiting: { ...typography.caption, color: colors.waiting },
-  savedTitle: { ...typography.title, color: colors.ink },
-  savedMeta: { ...typography.caption, color: colors.inkMuted },
-  composer: {
+  safeArea: { flex: 1, backgroundColor: colors.canvas },
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingTop: spacing.md,
-  },
-  input: {
-    flex: 1,
-    minHeight: 50,
+    gap: spacing.md,
     paddingHorizontal: spacing.lg,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    color: colors.ink,
-    ...typography.body,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.surfaceRaised,
   },
-  sendButton: {
-    width: 50,
-    height: 50,
+  avatar: {
+    width: 38,
+    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.pill,
-    backgroundColor: colors.ink,
+    backgroundColor: colors.surfaceMuted,
   },
-  sendText: { ...typography.heading, color: colors.surface },
+  avatarText: { ...typography.label, color: colors.inkMuted },
+  headerCopy: { flex: 1, gap: 1 },
+  person: { ...typography.title, color: colors.ink },
+  presence: { ...typography.caption, color: colors.positive },
+  lockChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceMuted,
+  },
+  lockText: { ...typography.caption, color: colors.inkMuted },
+  previewNotice: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.accentSoft,
+  },
+  previewNoticeText: { ...typography.caption, color: colors.accent, textAlign: 'center' },
+  threadContent: { paddingHorizontal: spacing.lg, paddingVertical: spacing.xl },
+  messageRow: { alignItems: 'flex-start', paddingVertical: spacing.xs },
+  messageRowSelf: { alignItems: 'flex-end' },
+  bubble: { maxWidth: '82%', gap: spacing.sm, padding: spacing.md, borderRadius: radius.lg },
+  otherBubble: { borderBottomLeftRadius: radius.sm, backgroundColor: colors.surfaceRaised },
+  selfBubble: { borderBottomRightRadius: radius.sm, backgroundColor: colors.accent },
+  messageText: { ...typography.body, color: colors.ink },
+  selfMessageText: { color: colors.surfaceRaised },
+  messageMeta: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  time: { ...typography.caption, color: colors.inkFaint },
+  selfTime: { color: '#DCD8FF' },
+  savedIndicator: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  savedIndicatorText: { ...typography.caption, color: colors.accent },
+  savedIndicatorTextSelf: { color: colors.surfaceRaised },
+  feedback: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.accentSoft,
+  },
+  feedbackText: { ...typography.caption, flex: 1, color: colors.accent },
+  composer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderTopWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.surfaceRaised,
+  },
+  input: {
+    ...typography.body,
+    flex: 1,
+    maxHeight: 112,
+    minHeight: 48,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radius.xl,
+    backgroundColor: colors.surfaceMuted,
+    color: colors.ink,
+  },
+  sendButton: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
+  },
+  sendButtonDisabled: { opacity: 0.36 },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceMuted,
+  },
+  actionIcon: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    backgroundColor: colors.accentSoft,
+  },
+  actionCopy: { flex: 1, gap: spacing.xs },
+  actionTitle: { ...typography.title, color: colors.ink },
+  actionDescription: { ...typography.caption, color: colors.inkMuted },
+  actionHint: { ...typography.caption, color: colors.inkFaint, textAlign: 'center' },
 });

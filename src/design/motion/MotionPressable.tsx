@@ -13,6 +13,8 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 type MotionPressableProps = PropsWithChildren<{
   accessibilityLabel: string;
+  disabled?: boolean;
+  onLongPress?: () => void;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
   testID?: string;
@@ -21,6 +23,8 @@ type MotionPressableProps = PropsWithChildren<{
 export function MotionPressable({
   accessibilityLabel,
   children,
+  disabled = false,
+  onLongPress,
   onPress,
   style,
   testID,
@@ -40,6 +44,9 @@ export function MotionPressable({
     <AnimatedPressable
       accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onLongPress={onLongPress}
       onPress={onPress}
       onPressIn={() => setPressed(true)}
       onPressOut={() => setPressed(false)}
