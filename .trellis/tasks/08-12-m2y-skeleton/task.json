@@ -1,0 +1,32 @@
+{
+  "id": "m2y-skeleton",
+  "name": "m2y-skeleton",
+  "title": "搭建 M2Y 项目骨架（建仓 + 目录 + 基础设施）",
+  "description": "建立锁定 Expo SDK 56 的 React Native 客户端骨架，落地 Development Build、路由、设计令牌、原生依赖、FlashList 基准页、架构边界和 CI。",
+  "status": "in_progress",
+  "dev_type": "infrastructure",
+  "scope": "mobile",
+  "package": null,
+  "priority": "P0",
+  "creator": "heloxM2Y",
+  "assignee": "heloxM2Y",
+  "createdAt": "2026-08-12",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "M2Y_PRD—1786520919670/M2Y_PRD_修订版.md",
+    "M2Y_React_Native_技术选型.md"
+  ],
+  "notes": "2026-08-13 用户批准后按 Codex inline 工作流实施；全量自动门禁与 Windows arm64 Development Build 已通过，Android 设备启动及 iOS 构建待验证。",
+  "meta": {
+    "executionMode": "inline",
+    "targetExpoSdk": 56
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'D:\\coding2\\M2Y\\.codex\\hooks\\inject-subagent-context.py'",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'D:\\coding2\\M2Y\\.codex\\hooks\\inject-subagent-context.py'",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read|Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'D:\\coding2\\M2Y\\.codex\\hooks\\inject-spec-context.py'",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'D:\\coding2\\M2Y\\.codex\\hooks\\session-start.py'",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'D:\\coding2\\M2Y\\.codex\\hooks\\session-start.py'",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "python 'D:\\coding2\\M2Y\\.codex\\hooks\\inject-spec-context.py'",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'D:\\coding2\\M2Y\\.codex\\hooks\\session-start.py'",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "python 'D:\\coding2\\M2Y\\.codex\\hooks\\inject-spec-context.py'",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'D:\\coding2\\M2Y\\.codex\\hooks\\inject-workflow-state.py'",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
