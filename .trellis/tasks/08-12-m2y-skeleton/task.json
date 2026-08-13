@@ -12,7 +12,7 @@
   "assignee": "heloxM2Y",
   "createdAt": "2026-08-12",
   "completedAt": null,
-  "branch": null,
+  "branch": "chore/m2y-skeleton",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
