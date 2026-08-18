@@ -26,3 +26,22 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 2: Finish work: archive join task + record journal
+
+**Date**: 2026-08-18
+**Task**: Finish work: archive join task + record journal
+**Branch**: `main`
+
+### Summary
+
+Wrapped up session: archived 00-join-helox (onboarding task, confirmed by user). No code changes this session; working tree was clean. Recorded session journal.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**
