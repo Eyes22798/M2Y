@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目状态
 
-**M2Y（My Two People）目前处于产品文档阶段，仓库内没有任何代码**（无 package.json、无源码）。当前只有两份权威文档：
+**M2Y（My Two People）产品处于 M0/M1 早期阶段**：仓库已有 Expo SDK 56 客户端骨架代码（package.json、`app/`、`src/`、`modules/m2y-crypto/`），但 E2EE 原生集成、SQLCipher 同步、E2E 测试工具尚未完成技术验证，服务端尚未实现。当前有两份权威文档：
 
 | 文档 | 路径 | 作用 |
 |---|---|---|
