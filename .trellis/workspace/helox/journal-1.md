@@ -45,3 +45,22 @@ Wrapped up session: archived 00-join-helox (onboarding task, confirmed by user).
 ### Status
 
 [OK] **Completed**
+
+
+## Session 3: Finish work: no active task
+
+**Date**: 2026-08-18
+**Task**: Finish work: no active task
+**Branch**: `main`
+
+### Summary
+
+Reran /trellis:finish-work. No active tasks, clean working tree, no code changes. No archives needed; recorded session journal only.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**
