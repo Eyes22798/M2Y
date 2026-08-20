@@ -30,4 +30,10 @@ jobs:
         env:
           APP_VARIANT: development
 
+      - run: pnpm server:format:check
+      - run: pnpm server:typecheck
+      - run: pnpm server:lint
+      - run: pnpm server:test -- --ci
+      - run: pnpm server:build
+
       # Database migration tests become required when Spike C creates the first schema.

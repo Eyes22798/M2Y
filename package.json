@@ -74,9 +74,20 @@
     "prebuild:android": "expo prebuild --clean --no-install --platform android",
     "build:android:debug": "node scripts/build-android-debug.mjs",
     "build:android:debug:arm64": "node scripts/build-android-debug.mjs -PreactNativeArchitectures=arm64-v8a",
+    "server:format": "pnpm --filter @m2y/server format",
+    "server:format:check": "pnpm --filter @m2y/server format:check",
+    "server:typecheck": "pnpm --filter @m2y/server typecheck",
+    "server:lint": "pnpm --filter @m2y/server lint",
+    "server:test": "pnpm --filter @m2y/server test",
+    "server:build": "pnpm --filter @m2y/server build",
     "prepare": "husky"
   },
   "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
+  },
   "lint-staged": {
     "*.{ts,tsx,js,mjs,cjs}": [
       "eslint --fix",
