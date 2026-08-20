@@ -6,7 +6,14 @@ module.exports = defineConfig([
   expoConfig,
   reactHooks.configs.flat['recommended-latest'],
   {
-    ignores: ['android/**', 'ios/**', 'dist/**', '.expo/**', 'node_modules/**'],
+    ignores: [
+      'android/**',
+      'ios/**',
+      'modules/**/android/build/**',
+      'dist/**',
+      '.expo/**',
+      'node_modules/**',
+    ],
   },
   {
     files: ['**/*.{ts,tsx,js,mjs,cjs}'],

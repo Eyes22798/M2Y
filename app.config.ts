@@ -82,6 +82,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           faceIDPermission: '允许 M2Y 使用面容 ID 确认你的身份。',
         },
       ],
+      './modules/m2y-crypto/app.plugin.js',
     ],
     experiments: {
       typedRoutes: true,

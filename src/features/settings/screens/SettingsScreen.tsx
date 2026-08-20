@@ -80,6 +80,9 @@ export function SettingsScreen() {
             <Link href="/_dev/storage" style={styles.devLink}>
               运行 Android 加密存储验收
             </Link>
+            <Link href="/_dev/e2ee" style={styles.devLink}>
+              运行 Android E2EE 原生加载门禁
+            </Link>
           </View>
         ) : null}
 

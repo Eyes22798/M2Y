@@ -47,6 +47,7 @@ example
 # generated native folders
 /ios
 /android
+/modules/*/android/build/
 
 # local tooling
 .codegraph/cache/

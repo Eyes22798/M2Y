@@ -1,0 +1,13 @@
+{
+  "name": "m2y-crypto",
+  "version": "0.1.0",
+  "description": "M2Y Android libsignal integration spike",
+  "main": "index.ts",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

@@ -22,8 +22,12 @@ pnpm start
 
 项目包含原生模块，请使用 Development Build，不以 Expo Go 作为正式运行环境：
 
+libsignal `0.101.0` 发布为 Java 21 字节码，因此 Android 构建的 `JAVA_HOME` 必须指向 JDK 21。当前 React Native Gradle 插件仍需要 JDK 17 toolchain；若 Gradle 未自动发现它，通过 `M2Y_JAVA_17_HOME` 显式指定：
+
 ```powershell
 $env:APP_VARIANT='development'
+$env:JAVA_HOME='C:\path\to\jdk-21'
+$env:M2Y_JAVA_17_HOME='C:\path\to\jdk-17'
 pnpm prebuild:android
 pnpm build:android:debug:arm64
 pnpm start --dev-client

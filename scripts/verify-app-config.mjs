@@ -56,6 +56,7 @@ for (const { variant, config } of configs) {
     'expo-sqlite',
     'expo-secure-store',
     'expo-local-authentication',
+    './modules/m2y-crypto/app.plugin.js',
   ]) {
     if (!pluginNames.includes(requiredPlugin)) {
       throw new Error(`${variant} is missing required plugin ${requiredPlugin}.`);

@@ -74,6 +74,86 @@ node scripts/build-android-debug.mjs
 pnpm build:android:debug:arm64
 ```
 
+## Scenario: Official libsignal Android Module Build
+
+### 1. Scope / Trigger
+
+- Trigger: changing `modules/m2y-crypto`, its config plugin, the pinned libsignal version, Android Java/Kotlin settings, desugaring, packaging exclusions, or ABI build commands.
+- The module is an Android-first technical boundary. Production identity, pairing, sync, and iOS support require separate specifications.
+
+### 2. Signatures
+
+```powershell
+$env:JAVA_HOME='<installed JDK 21>'
+$env:M2Y_JAVA_17_HOME='<installed JDK 17>'
+$env:ANDROID_HOME='<Android SDK>'
+pnpm prebuild:android
+pnpm build:android:debug:arm64
+```
+
+```text
+modules/m2y-crypto/android/build.gradle
+  -> org.signal:libsignal-client:0.101.0
+  -> org.signal:libsignal-android:0.101.0
+
+modules/m2y-crypto/app.plugin.js
+  -> Signal-owned Maven repository
+  -> app coreLibraryDesugaringEnabled + desugar_jdk_libs:1.1.6
+  -> desktop/testing native-resource exclusions
+```
+
+### 3. Contracts
+
+- Keep both Signal artifacts on one exact version; floating/ranged versions are forbidden.
+- Gradle runs on JDK 21 because the upstream classes use Java class-file version 65. Set `M2Y_JAVA_17_HOME` so React Native's included build can still select a compatible JDK 17 toolchain. The two paths must be different installed JDK roots and neither may contain a comma.
+- Persist Maven, desugaring, and packaging configuration through `modules/m2y-crypto/app.plugin.js`; never depend on hand-edited generated `android/` files.
+- Use the Signal-owned publication endpoint referenced by the pinned upstream release. A network mirror may replace only the Gradle distribution URL, not artifact provenance or coordinates.
+- Keep `modules/*/android/build/` ignored. Test reports and compiled module outputs are generated artifacts, not source or task evidence.
+- The JavaScript boundary returns strict redacted codes and aggregate metrics only. Keys, plaintext, fingerprints, protocol records, ciphertext payloads, and raw native exceptions remain native.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected result |
+|---|---|
+| Gradle runs on JDK 17 against libsignal 0.101.0 | Class-file version 65 failure; set JDK 21, do not downgrade verification |
+| React Native included build sees only JDK 21 | Expose the installed JDK 17 through `M2Y_JAVA_17_HOME` / Gradle installation paths |
+| Desugaring is absent after clean prebuild | Fail config/build verification; fix the config plugin |
+| Signal artifacts have different or floating versions | Fail review/config verification |
+| ARM64 APK contains another native ABI or testing/desktop JNI | Fail package audit and do not distribute the artifact |
+| Checkpoint exists but its Keystore alias/tag/version is invalid | Fail closed with a stable redacted code; never replace the persona silently |
+
+### 5. Good / Base / Bad Cases
+
+- Good: clean prebuild reproduces the repository, desugaring and packaging rules; ARM64 and x86_64 builds/tests pass from pinned official artifacts.
+- Base: use a trusted HTTPS Gradle distribution mirror when the wrapper host is unavailable while leaving Signal artifact origin unchanged.
+- Bad: manually patch generated Gradle files, bundle multiple ABIs into a file advertised as ARM64-only, or return native cryptographic state through JavaScript for easier testing.
+
+### 6. Tests Required
+
+- Run format, typecheck, lint, dependency, Jest adapter, config, Expo Doctor and production Android export gates.
+- Run `:m2y-crypto:testDebugUnitTest` for store serialization/copy and protocol semantics.
+- Run `:m2y-crypto:connectedDebugAndroidTest` for Keystore AES-GCM, AtomicFile rollback, authentication/tag/version failures and cleanup.
+- Run a clean prebuild followed by both x86_64 and ARM64 debug builds. Audit the final APK entries and SHA-256; only the requested ABI and production `libsignal_jni.so` may be present.
+- A physical ARM64 runtime row is required before closing an Android acceptance task; an emulator or successful package inspection is not a substitute.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```powershell
+# Uses the default JDK and relies on manual changes under generated android/.
+android\gradlew.bat :app:assembleDebug
+```
+
+#### Correct
+
+```powershell
+$env:JAVA_HOME='<installed JDK 21>'
+$env:M2Y_JAVA_17_HOME='<installed JDK 17>'
+pnpm prebuild:android
+pnpm build:android:debug:arm64
+```
+
 ## Required Code Practices
 
 - Keep TypeScript `strict`, `noUncheckedIndexedAccess`, and `exactOptionalPropertyTypes` enabled.

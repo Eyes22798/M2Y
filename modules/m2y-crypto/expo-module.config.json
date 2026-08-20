@@ -1,0 +1,6 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": ["com.m2y.crypto.M2YCryptoModule"]
+  }
+}
