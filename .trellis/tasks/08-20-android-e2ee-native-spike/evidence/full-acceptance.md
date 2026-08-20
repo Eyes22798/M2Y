@@ -4,11 +4,11 @@ Date: 2026-08-20
 
 ## Result
 
-The implementation and x86_64 Android acceptance sequence pass. The official
-libsignal 0.101.0 artifacts also build and load on ARM64, but the latest APK has
-not yet completed the full sequence on the physical ARM64 phone because only the
-x86_64 emulator is currently visible to ADB. This evidence therefore does not
-claim the physical-device row is complete.
+The implementation, API 37.1 x86_64 emulator sequence, and the complete physical
+ARM64 sequence pass. The official libsignal 0.101.0 artifacts build and run on
+both target ABIs. The final physical run used the exact ARM64-only APK audited
+below and ended with the encrypted checkpoint, Keystore alias, and synthetic
+temporary file cleaned.
 
 ## Automated gates
 
@@ -71,10 +71,27 @@ targeted emulator logcat scan reported zero sensitive-pattern hits.
 `assets/acknowledgments/libsignal-testing.md` is a license acknowledgment, not a
 native testing library. No `libsignal` testing SO, DLL, or dylib is packaged.
 
-## Physical-device status
+## realme RMX3888 ARM64 physical sequence
 
-The realme RMX3888 ARM64 phone previously passed Gate 1 with libsignal 0.101.0
-loaded by the Development Build; see `arm64-gate1-pass.jpg`. At final acceptance
-time ADB lists only `emulator-5554`, so the latest ARM64 APK still needs this
-physical sequence: fresh → force-stop → resume → negative → performance →
-cleanup. Until that row passes, the task remains in progress.
+| Step | Result | Evidence |
+|---|---|---|
+| Final APK install and ABI check | PASS; Android API 36, only `arm64-v8a` | host install/audit record |
+| Gate 1 native load | PASS; libsignal 0.101.0 | `arm64-gate1-pass.jpg` and final run |
+| Fresh PQXDH + encrypted checkpoint | PASS; revision 1 | `arm64-fresh-resume-negative-pass.jpg` |
+| Android Settings force-stop and process restart | PASS | final screenshot contains no Fresh React result card while the native checkpoint is rediscovered |
+| Resume after restart | PASS; revision 2, checkpoint reopened, both directions decrypted, fingerprint stable | `arm64-full-acceptance-pass.jpg` |
+| Negative and AtomicFile rollback | PASS; revision 3 | `arm64-full-acceptance-pass.jpg` |
+| 1,000 messages + attachment-key wrap + synthetic 100 MB native stream | PASS; revision 4 | `arm64-full-acceptance-pass.jpg` |
+| Cleanup | PASS; checkpoint and Keystore key cleaned | `arm64-full-acceptance-pass.jpg` |
+
+Physical performance: 495.9 ms total, 0.462 ms p50, 0.635 ms p95, and
+9,723,904 byte observed process-memory delta. The 100 MB temporary file was
+deleted by the native probe. The final evidence file is 1,109,477 bytes with
+SHA-256
+`B39340AF09F0F750303E0C86B73DA901D3CD82118F2C26C12E5593480A056675`.
+
+The screenshot state is also process-restart evidence: after the user performed
+Android Settings force-stop and reopened the route, page-local Fresh output was
+absent, while the native checkpoint independently enabled Resume and produced a
+revision-2 reopen result. Resume was therefore not inferred from a same-process
+button sequence.

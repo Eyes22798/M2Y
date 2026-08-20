@@ -34,14 +34,14 @@
   - Settings 仅 development 显示入口；preview/production route 或入口不可达。
   - UI 只显示稳定 PASS/FAIL code、版本/ABI 和 aggregate metrics；不显示原生异常或安全号码。
 
-- [ ] F. 完整验证与 go/no-go 报告
+- [x] F. 完整验证与 go/no-go 报告
   - 运行 format/type/lint/dependency/Jest/config/Doctor/export/clean prebuild。
   - 运行 module JVM tests、Android instrumented tests、x86_64/arm64 debug builds。
   - 在 API 37.1 emulator 和 realme RMX3888 physical device 完成 fresh → force-stop → resume → negative → performance → cleanup。
   - 检查 APK/AAB native entries、desktop/testing resource exclusions、包体变化和敏感日志。
   - 输出 Android go/no-go、已知风险、AGPL/source/notices 清单以及 iOS/production storage/配对/同步后续任务。
 
-  当前状态：自动化门禁、API 37.1 x86_64 模拟器完整流程、ARM64-only 构建与真机 Gate 1 均已通过；最新 APK 的 ARM64 真机完整 fresh → force-stop → resume → negative → performance → cleanup 流程仍待设备重新连接后执行。
+  完成状态：自动化门禁、API 37.1 x86_64 模拟器完整流程、ARM64-only 构建、真机 Gate 1，以及最新 APK 在 realme RMX3888 上的 fresh → force-stop → resume → negative → performance → cleanup 全流程均已通过。
 
 ## Validation Commands
 

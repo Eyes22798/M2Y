@@ -16,7 +16,7 @@ Inspect the user-selected Figma node and implement it faithfully in the existing
 - [completed] Plan the Android-first local identity, encrypted storage, and security-boundary foundation.
 - [completed] Execute the approved Android-first encrypted storage and secure-boot foundation through native SQLCipher and emulator acceptance.
 - [completed] Run strong-biometric success/cancel/background-relock acceptance on a physical Android device.
-- [in_progress] Android-first M0 E2EE native-integration Spike plan is converged and awaiting explicit implementation approval.
+- [completed] Complete and archive the Android-first M0 E2EE native-integration Spike with emulator and ARM64 physical acceptance.
 
 ## Decisions
 
@@ -28,4 +28,4 @@ Inspect the user-selected Figma node and implement it faithfully in the existing
 
 ## Blockers
 
-- No technical planning blocker remains; implementation still requires explicit approval of the final summary.
+- No blocker remains for the Android M0 E2EE native-integration Spike. Production identity, pairing, sync, iOS parity and release compliance remain separately scoped follow-up work.

@@ -16,8 +16,8 @@ performance.
 not implement production identity lifecycle, pairing, pre-key service,
 transactional message sync, attachment format, device change/revocation,
 recovery, group/multi-device behavior, iOS parity, or an independent threat and
-cryptographic integration review. The latest build also still requires the full
-physical ARM64 acceptance sequence.
+cryptographic integration review. The completed ARM64 Spike acceptance does not
+remove those product and release gates.
 
 ## Release gates retained
 
@@ -33,8 +33,8 @@ physical ARM64 acceptance sequence.
 - Keep identity keys, session records, plaintext, fingerprints and raw native
   exceptions inside the native security boundary; the app layer receives only
   narrow commands and redacted domain results.
-- Complete the latest-APK physical ARM64 sequence and later create a separate iOS
-  feasibility task before claiming platform parity.
+- Repeat the physical ARM64 acceptance for libsignal or toolchain upgrades, and
+  create a separate iOS feasibility task before claiming platform parity.
 
 ## Recommended next tasks
 
