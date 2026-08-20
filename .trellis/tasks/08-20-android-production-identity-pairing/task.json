@@ -2,10 +2,10 @@
   "id": "android-production-identity-pairing",
   "name": "android-production-identity-pairing",
   "title": "Android 生产身份、配对与安全号码闭环",
-  "description": "将已验证的本地安全与 libsignal 能力产品化为真实 M2Y-ID、配对请求和安全号码闭环。",
-  "status": "planning",
-  "dev_type": null,
-  "scope": null,
+  "description": "将已验证的 Android 本地安全与 libsignal 能力产品化为真实 M2Y-ID、三种配对入口、双方确认和安全号码闭环。",
+  "status": "in_progress",
+  "dev_type": "feature",
+  "scope": "android-identity-pairing",
   "package": null,
   "priority": "P0",
   "creator": "heloxM2Y",
@@ -20,7 +20,26 @@
   "subtasks": [],
   "children": [],
   "parent": "08-20-m2y-product-progress-roadmap",
-  "relatedFiles": [],
-  "notes": "",
-  "meta": {}
+  "relatedFiles": [
+    "app/(auth)/create-identity.tsx",
+    "app/(auth)/pair.tsx",
+    "app/(auth)/verify-safety-number.tsx",
+    "src/features/identity/screens/AuthPlaceholderScreen.tsx",
+    "src/bootstrap/AppProviders.tsx",
+    "src/application/secure-workspace/contracts.ts",
+    "src/data/sqlite/schema-v1.ts",
+    "src/native/crypto/M2YCryptoSpikeContract.ts",
+    "modules/m2y-crypto/android/src/main/java/com/m2y/crypto/M2YSignalProtocolStore.java",
+    "server/README.md"
+  ],
+  "notes": "复杂跨层任务；详细规划通过后才运行 task.py start。",
+  "meta": {
+    "platformPriority": "android-first",
+    "libsignalVersion": "0.101.0",
+    "pairingMethods": [
+      "qr",
+      "m2y-id",
+      "handshake-code"
+    ]
+  }
 }

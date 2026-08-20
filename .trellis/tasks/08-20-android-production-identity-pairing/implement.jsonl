@@ -1,1 +1,6 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/frontend/index.md","reason":"定位 Expo 客户端结构、状态和质量规范入口。"}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"保持 route、feature、application、data 与 native 分层。"}
+{"file":".trellis/spec/frontend/state-management.md","reason":"身份/关系 provider 必须发布 committed state 并位于安全 gate 内。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"遵守 SDK 56、Android native、libsignal、ABI 和真机门禁。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"任务跨 client/native/server/database，需要逐边界校验契约。"}
+{"file":".trellis/tasks/08-20-android-production-identity-pairing/research/identity-pairing-architecture.md","reason":"加载当前代码事实、服务选型、native store 与配对 transcript 研究。"}

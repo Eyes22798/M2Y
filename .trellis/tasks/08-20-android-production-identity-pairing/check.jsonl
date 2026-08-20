@@ -1,1 +1,5 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"复核页面组合、可访问性、图标和测试边界。"}
+{"file":".trellis/spec/frontend/state-management.md","reason":"复核 fail-closed gate、committed state 和 provider 生命周期。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"执行完整 Android/libsignal 构建与真机验收。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"追踪 public bundle、opaque packet、错误码和状态的端到端数据流。"}
+{"file":".trellis/tasks/08-20-android-production-identity-pairing/research/identity-pairing-architecture.md","reason":"核对实现未突破服务零明文、Spike 隔离和里程碑范围。"}
