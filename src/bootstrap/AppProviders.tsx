@@ -1,17 +1,23 @@
-import type { PropsWithChildren } from 'react';
+import { type PropsWithChildren, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { PreviewWorkspaceProvider } from '@/stores/preview-workspace/PreviewWorkspaceProvider';
+import { SecureWorkspaceGate } from '@/features/secure-workspace/SecureWorkspaceGate';
+import { SecureWorkspaceProvider } from '@/stores/secure-workspace/SecureWorkspaceProvider';
 
-export function AppProviders({ children }: PropsWithChildren) {
+import { createAppRuntime, type AppRuntime } from './createAppRuntime';
+
+export function AppProviders({ children, runtime }: PropsWithChildren<{ runtime?: AppRuntime }>) {
+  const [appRuntime] = useState(() => runtime ?? createAppRuntime());
   return (
     <GestureHandlerRootView style={styles.root}>
       <KeyboardProvider>
         <SafeAreaProvider>
-          <PreviewWorkspaceProvider>{children}</PreviewWorkspaceProvider>
+          <SecureWorkspaceProvider controller={appRuntime.secureWorkspaceController}>
+            <SecureWorkspaceGate>{children}</SecureWorkspaceGate>
+          </SecureWorkspaceProvider>
         </SafeAreaProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>

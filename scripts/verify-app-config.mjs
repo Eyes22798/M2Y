@@ -42,6 +42,10 @@ for (const { variant, config } of configs) {
     throw new Error(`${variant} public extra is incomplete.`);
   }
 
+  if (config.android?.allowBackup !== false) {
+    throw new Error(`${variant} must disable Android application backup.`);
+  }
+
   const pluginNames = config.plugins.map((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin));
   if (pluginNames.includes('expo-screen-capture')) {
     throw new Error('expo-screen-capture must remain a runtime-only dependency on SDK 56.');
@@ -67,6 +71,13 @@ for (const { variant, config } of configs) {
     sqlitePlugin[1]?.useSQLCipher !== true
   ) {
     throw new Error(`${variant} must enable both FTS and SQLCipher in expo-sqlite.`);
+  }
+
+  const secureStorePlugin = config.plugins.find(
+    (plugin) => Array.isArray(plugin) && plugin[0] === 'expo-secure-store',
+  );
+  if (!secureStorePlugin || secureStorePlugin[1]?.configureAndroidBackup !== false) {
+    throw new Error(`${variant} must not configure Android backup for SecureStore.`);
   }
 }
 

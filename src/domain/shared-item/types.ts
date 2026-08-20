@@ -14,5 +14,5 @@ export type SharedItem = Readonly<{
   status: SharedItemStatus;
   pinned: boolean;
   sourceMessageId?: string;
-  updatedAtLabel: string;
+  updatedAtMs: number;
 }>;

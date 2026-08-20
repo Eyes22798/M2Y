@@ -14,12 +14,13 @@ import {
   previewKindOptions,
   sharedItemKindLabels,
 } from '@/features/shared-item/shared-item-presenters';
-import { usePreviewWorkspace } from '@/stores/preview-workspace/PreviewWorkspaceProvider';
+import { formatUpdatedAt } from '@/features/workspace/workspace-presenters';
+import { useWorkspace } from '@/stores/workspace/WorkspaceProvider';
 
 type SpaceFilter = 'all' | PreviewSharedItemKind;
 
 export function SpaceHomeScreen() {
-  const { state } = usePreviewWorkspace();
+  const { state } = useWorkspace();
   const [filter, setFilter] = useState<SpaceFilter>('all');
   const filteredItems = useMemo(
     () =>
@@ -42,7 +43,7 @@ export function SpaceHomeScreen() {
             <Text style={styles.description}>把聊天里重要的事，放到两个人共同的空间。</Text>
           </View>
           <View style={styles.previewChip}>
-            <Text style={styles.previewChipText}>本地预览</Text>
+            <Text style={styles.previewChipText}>本机加密</Text>
           </View>
         </View>
 
@@ -109,7 +110,7 @@ export function SpaceHomeScreen() {
         <View style={styles.localNotice}>
           <AppIcon color={colors.inkMuted} name="lock" size={18} />
           <Text style={styles.localNoticeText}>
-            当前内容仅用于本地功能预览，App 重启后会清空，也不会同步到其他设备。
+            当前内容已保存在本机加密数据库中，不会同步到其他设备。
           </Text>
         </View>
       </ScrollView>
@@ -150,7 +151,7 @@ function SharedItemCard({ item, onPress }: { item: SharedItem; onPress: () => vo
       <View style={styles.itemCopy}>
         <View style={styles.itemTopLine}>
           <Text style={styles.kindLabel}>{sharedItemKindLabels[item.kind]}</Text>
-          <Text style={styles.updatedAt}>{item.updatedAtLabel}</Text>
+          <Text style={styles.updatedAt}>{formatUpdatedAt(item.updatedAtMs)}</Text>
         </View>
         <Text numberOfLines={1} style={styles.itemTitle}>
           {item.title}

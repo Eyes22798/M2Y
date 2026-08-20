@@ -1,26 +1,26 @@
-import type { PreviewWorkspaceState } from './types';
+import type { WorkspaceSnapshot } from './contracts';
 
-export const initialPreviewWorkspaceState: PreviewWorkspaceState = {
+export const demoWorkspaceSnapshot: WorkspaceSnapshot = {
   messages: [
     {
       id: 'message-1',
       author: 'other',
       body: '周六去看电影吗？',
-      createdAtLabel: '19:28',
+      createdAtMs: new Date(2026, 7, 20, 19, 28).getTime(),
       savedItemIds: [],
     },
     {
       id: 'message-2',
       author: 'self',
       body: '好呀，订了 19:30 的票。',
-      createdAtLabel: '19:29',
+      createdAtMs: new Date(2026, 7, 20, 19, 29).getTime(),
       savedItemIds: ['item-1'],
     },
     {
       id: 'message-3',
       author: 'other',
       body: '记得提前把路线发我。',
-      createdAtLabel: '19:30',
+      createdAtMs: new Date(2026, 7, 20, 19, 30).getTime(),
       savedItemIds: ['item-2'],
     },
   ],
@@ -33,7 +33,7 @@ export const initialPreviewWorkspaceState: PreviewWorkspaceState = {
       status: 'waiting',
       pinned: true,
       sourceMessageId: 'message-2',
-      updatedAtLabel: '刚刚',
+      updatedAtMs: new Date(2026, 7, 20, 19, 31).getTime(),
     },
     {
       id: 'item-2',
@@ -43,9 +43,7 @@ export const initialPreviewWorkspaceState: PreviewWorkspaceState = {
       status: 'active',
       pinned: false,
       sourceMessageId: 'message-3',
-      updatedAtLabel: '刚刚',
+      updatedAtMs: new Date(2026, 7, 20, 19, 31).getTime(),
     },
   ],
-  nextMessageSequence: 4,
-  nextItemSequence: 3,
 };

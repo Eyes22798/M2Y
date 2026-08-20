@@ -25,6 +25,24 @@ module.exports = {
       to: { path: '^src/(data|native|sync)' },
     },
     {
+      name: 'application-stays-framework-free',
+      comment:
+        'Application contracts and rules depend only on domain and other pure application code.',
+      severity: 'error',
+      from: { path: '^src/application' },
+      to: {
+        path: '^(app|src/(bootstrap|data|design|features|native|stores|sync|testing))|^(react|react-native|expo($|[-/])|@shopify)',
+      },
+    },
+    {
+      name: 'outer-adapters-do-not-depend-on-ui',
+      comment:
+        'Data and native adapters implement application ports and never import routes or UI state.',
+      severity: 'error',
+      from: { path: '^src/(data|native)' },
+      to: { path: '^(app|src/(bootstrap|design|features|stores|testing))' },
+    },
+    {
       name: 'ui-does-not-own-storage-or-crypto',
       comment: 'UI components consume use cases, never SQLite or cryptography implementations.',
       severity: 'error',

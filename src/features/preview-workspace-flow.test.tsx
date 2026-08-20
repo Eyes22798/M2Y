@@ -1,14 +1,13 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
+import { demoWorkspaceSnapshot } from '@/application/workspace/demo-workspace';
 import { spacing } from '@/design/tokens';
 import { ChatScreen } from '@/features/chat/screens/ChatScreen';
 import { SharedItemDetailScreen } from '@/features/shared-item/screens/SharedItemDetailScreen';
 import { SpaceHomeScreen } from '@/features/space-home/screens/SpaceHomeScreen';
-import {
-  PreviewWorkspaceProvider,
-  usePreviewWorkspace,
-} from '@/stores/preview-workspace/PreviewWorkspaceProvider';
+import { useWorkspace, WorkspaceProvider } from '@/stores/workspace/WorkspaceProvider';
+import { InMemoryWorkspaceSession } from '@/testing/workspace/InMemoryWorkspaceSession';
 
 const mockRouterPush = jest.fn();
 const mockRouterBack = jest.fn();
@@ -23,7 +22,7 @@ jest.mock('expo-router', () => ({
 }));
 
 function WorkspaceCount() {
-  const { state } = usePreviewWorkspace();
+  const { state } = useWorkspace();
   return <Text>{`items:${state.sharedItems.length}`}</Text>;
 }
 
@@ -34,11 +33,12 @@ describe('preview workspace user flows', () => {
   });
 
   it('sends a message and saves a selected message to Space', async () => {
+    const session = new InMemoryWorkspaceSession(demoWorkspaceSnapshot);
     const view = await render(
-      <PreviewWorkspaceProvider>
+      <WorkspaceProvider session={session}>
         <ChatScreen />
         <WorkspaceCount />
-      </PreviewWorkspaceProvider>,
+      </WorkspaceProvider>,
     );
 
     expect(view.getByTestId('chat-keyboard-avoiding-view').props).toMatchObject({
@@ -50,10 +50,13 @@ describe('preview workspace user flows', () => {
     await waitFor(() =>
       expect(view.getByTestId('chat-send').props.accessibilityState).toEqual({ disabled: false }),
     );
-    fireEvent.press(view.getByTestId('chat-send'));
+    await act(async () => {
+      fireEvent.press(view.getByTestId('chat-send'));
+      await Promise.resolve();
+    });
 
     await waitFor(() => expect(view.getByText('明天一起吃饭')).toBeTruthy());
-    expect(view.getByText('消息已发送 · 当前设备预览')).toBeTruthy();
+    expect(view.getByText('消息已保存到当前设备')).toBeTruthy();
 
     fireEvent.press(view.getByLabelText('对方的消息：周六去看电影吗？'));
     await waitFor(() => expect(view.getByLabelText('保存到 Space')).toBeTruthy());
@@ -63,17 +66,21 @@ describe('preview workspace user flows', () => {
     });
     fireEvent.press(view.getByLabelText('保存到 Space'));
     await waitFor(() => expect(view.getByTestId('save-to-space-submit')).toBeTruthy());
-    fireEvent.press(view.getByTestId('save-to-space-submit'));
+    await act(async () => {
+      fireEvent.press(view.getByTestId('save-to-space-submit'));
+      await Promise.resolve();
+    });
 
     await waitFor(() => expect(view.getByText('items:3')).toBeTruthy());
     expect(view.getByText('已保存为笔记')).toBeTruthy();
   });
 
   it('filters Space and opens an existing item', async () => {
+    const session = new InMemoryWorkspaceSession(demoWorkspaceSnapshot);
     const view = await render(
-      <PreviewWorkspaceProvider>
+      <WorkspaceProvider session={session}>
         <SpaceHomeScreen />
-      </PreviewWorkspaceProvider>,
+      </WorkspaceProvider>,
     );
 
     fireEvent.press(view.getByLabelText('筛选笔记'));
@@ -87,11 +94,12 @@ describe('preview workspace user flows', () => {
   });
 
   it('confirms deletion from the detail screen', async () => {
+    const session = new InMemoryWorkspaceSession(demoWorkspaceSnapshot);
     const view = await render(
-      <PreviewWorkspaceProvider>
+      <WorkspaceProvider session={session}>
         <SharedItemDetailScreen />
         <WorkspaceCount />
-      </PreviewWorkspaceProvider>,
+      </WorkspaceProvider>,
     );
 
     expect(view.getByTestId('shared-item-keyboard-scroll').props).toMatchObject({
@@ -101,7 +109,10 @@ describe('preview workspace user flows', () => {
 
     fireEvent.press(view.getByLabelText('删除共享条目'));
     await waitFor(() => expect(view.getByLabelText('删除条目')).toBeTruthy());
-    fireEvent.press(view.getByLabelText('删除条目'));
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('删除条目'));
+      await Promise.resolve();
+    });
 
     await waitFor(() => expect(view.getByText('items:1')).toBeTruthy());
     expect(mockRouterBack).toHaveBeenCalledTimes(1);

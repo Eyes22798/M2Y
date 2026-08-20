@@ -29,7 +29,7 @@ export function SettingsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <Text style={styles.title}>设置</Text>
-          <Text style={styles.subtitle}>管理本地预览，并了解后续会加入的安全能力。</Text>
+          <Text style={styles.subtitle}>管理本机数据，并了解后续会加入的安全能力。</Text>
         </View>
 
         <View style={styles.previewCard}>
@@ -37,18 +37,19 @@ export function SettingsScreen() {
             <AppIcon color={colors.accent} name="checkCircle" size={26} />
           </View>
           <View style={styles.previewCopy}>
-            <Text style={styles.previewTitle}>基本功能预览</Text>
-            <Text style={styles.previewDetail}>聊天和 Space 已可在当前会话内使用</Text>
+            <Text style={styles.previewTitle}>本地安全空间</Text>
+            <Text style={styles.previewDetail}>Chat 和 Space 已保存在当前 Android 设备</Text>
           </View>
           <View style={styles.localBadge}>
-            <Text style={styles.localBadgeText}>仅本地</Text>
+            <Text style={styles.localBadgeText}>已加密</Text>
           </View>
         </View>
 
         <View style={styles.notice}>
           <AppIcon color={colors.inkMuted} name="lock" size={18} />
           <Text style={styles.noticeText}>
-            当前数据保存在运行内存中，重启 App 后清空；没有账号、服务端同步或真实加密承诺。
+            数据库由 SQLCipher
+            加密，密钥保存在系统保护存储中。当前仍没有账号、设备配对、服务端同步或端到端加密关系。
           </Text>
         </View>
 
@@ -76,10 +77,13 @@ export function SettingsScreen() {
             <Link href="/_dev/flash-list" style={styles.devLink}>
               打开 10,000 条消息基准页
             </Link>
+            <Link href="/_dev/storage" style={styles.devLink}>
+              运行 Android 加密存储验收
+            </Link>
           </View>
         ) : null}
 
-        <Text style={styles.version}>M2Y 0.1.0 · Expo SDK 56 · 功能预览</Text>
+        <Text style={styles.version}>M2Y 0.1.0 · Expo SDK 56 · Android 本地安全基础</Text>
       </ScrollView>
     </SafeAreaView>
   );

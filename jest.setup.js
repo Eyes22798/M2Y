@@ -68,3 +68,26 @@ jest.mock('react-native-safe-area-context', () => {
     SafeAreaView: ({ children }) => React.createElement(React.Fragment, null, children),
   };
 });
+jest.mock('expo-secure-store', () => ({
+  isAvailableAsync: async () => true,
+  getItemAsync: async () => null,
+  setItemAsync: async () => undefined,
+  deleteItemAsync: async () => undefined,
+  canUseBiometricAuthentication: () => false,
+}));
+jest.mock('expo-crypto', () => ({
+  getRandomBytesAsync: async (count) => new Uint8Array(count),
+  randomUUID: () => '00000000-0000-4000-8000-000000000000',
+}));
+jest.mock('expo-file-system', () => ({
+  File: class File {
+    exists = false;
+  },
+}));
+jest.mock('expo-sqlite', () => ({
+  defaultDatabaseDirectory: 'file:///test/databases',
+  deleteDatabaseAsync: async () => undefined,
+  openDatabaseAsync: async () => {
+    throw new Error('Native SQLite must be replaced by an injected test boundary');
+  },
+}));

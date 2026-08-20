@@ -24,6 +24,10 @@ export default function RootLayout() {
           name="_dev/flash-list"
           options={{ title: '10K 消息基准', presentation: 'modal' }}
         />
+        <Stack.Screen
+          name="_dev/storage"
+          options={{ title: '加密存储验收', presentation: 'modal' }}
+        />
         <Stack.Screen name="+not-found" options={{ title: '页面不存在' }} />
       </Stack>
     </AppProviders>

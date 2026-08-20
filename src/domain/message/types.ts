@@ -6,6 +6,6 @@ export type Message = Readonly<{
   id: string;
   author: MessageAuthor;
   body: string;
-  createdAtLabel: string;
+  createdAtMs: number;
   savedItemIds: readonly string[];
 }>;

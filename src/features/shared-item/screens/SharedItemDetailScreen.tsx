@@ -16,11 +16,11 @@ import {
   getKindIcon,
   sharedItemKindLabels,
 } from '@/features/shared-item/shared-item-presenters';
-import { usePreviewWorkspace } from '@/stores/preview-workspace/PreviewWorkspaceProvider';
+import { useWorkspace } from '@/stores/workspace/WorkspaceProvider';
 
 export function SharedItemDetailScreen() {
   const { itemId } = useLocalSearchParams<{ itemId: string }>();
-  const { commands, state } = usePreviewWorkspace();
+  const { busy, commands, state } = useWorkspace();
   const item = state.sharedItems.find((candidate) => candidate.id === itemId);
   const [title, setTitle] = useState(item?.title ?? '');
   const [detail, setDetail] = useState(item?.detail ?? '');
@@ -45,18 +45,23 @@ export function SharedItemDetailScreen() {
     );
   }
 
-  const save = () => {
-    const result = commands.updateSharedItem({ itemId: item.id, title, detail });
+  const save = async () => {
+    const result = await commands.updateSharedItem({ itemId: item.id, title, detail, status });
     if (!result.ok) {
-      setFeedback(result.reason === 'blank-title' ? '标题不能为空' : '条目已不存在');
+      setFeedback(
+        result.reason === 'blank-title'
+          ? '标题不能为空'
+          : result.reason === 'item-not-found'
+            ? '条目已不存在'
+            : '暂时无法写入本机数据',
+      );
       return;
     }
-    if (status !== item.status) commands.changeSharedItemStatus(item.id, status);
-    setFeedback('已保存到当前会话');
+    setFeedback('已保存到当前设备');
   };
 
-  const remove = () => {
-    const result = commands.deleteSharedItem(item.id);
+  const remove = async () => {
+    const result = await commands.deleteSharedItem(item.id);
     setConfirmDelete(false);
     if (result.ok) router.back();
   };
@@ -173,9 +178,9 @@ export function SharedItemDetailScreen() {
 
         <MotionPressable
           accessibilityLabel="保存共享条目"
-          disabled={!title.trim()}
-          onPress={save}
-          style={[styles.saveButton, !title.trim() && styles.saveButtonDisabled]}
+          disabled={busy || !title.trim()}
+          onPress={() => void save()}
+          style={[styles.saveButton, (busy || !title.trim()) && styles.saveButtonDisabled]}
         >
           <Text style={styles.saveText}>保存修改</Text>
         </MotionPressable>
@@ -183,9 +188,9 @@ export function SharedItemDetailScreen() {
 
       <ConfirmDialog
         confirmLabel="删除条目"
-        description="删除后，它会从 Space 和来源消息的保存标记中移除。此操作只影响当前会话。"
+        description="删除后，它会从 Space 和来源消息的保存标记中移除。此操作只影响当前设备。"
         onCancel={() => setConfirmDelete(false)}
-        onConfirm={remove}
+        onConfirm={() => void remove()}
         title="删除这个共享条目？"
         visible={confirmDelete}
       />

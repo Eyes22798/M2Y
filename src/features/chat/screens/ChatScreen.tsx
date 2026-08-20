@@ -10,10 +10,11 @@ import { AppIcon } from '@/design/primitives/AppIcon';
 import { colors, radius, spacing, typography } from '@/design/tokens';
 import type { Message } from '@/domain/message/types';
 import { SaveToSpaceSheet } from '@/features/save-to-space/components/SaveToSpaceSheet';
-import { usePreviewWorkspace } from '@/stores/preview-workspace/PreviewWorkspaceProvider';
+import { formatMessageTime } from '@/features/workspace/workspace-presenters';
+import { useWorkspace } from '@/stores/workspace/WorkspaceProvider';
 
 export function ChatScreen() {
-  const { commands, state } = usePreviewWorkspace();
+  const { busy, commands, state } = useWorkspace();
   const [draft, setDraft] = useState('');
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [saveMessageId, setSaveMessageId] = useState<string | null>(null);
@@ -28,11 +29,11 @@ export function ChatScreen() {
     [saveMessageId, state.messages],
   );
 
-  const send = () => {
-    const result = commands.sendMessage(draft);
+  const send = async () => {
+    const result = await commands.sendMessage(draft);
     if (!result.ok) return;
     setDraft('');
-    setFeedback('消息已发送 · 当前设备预览');
+    setFeedback('消息已保存到当前设备');
     Keyboard.dismiss();
   };
 
@@ -56,7 +57,7 @@ export function ChatScreen() {
           </View>
           <View style={styles.headerCopy}>
             <Text style={styles.person}>TA</Text>
-            <Text style={styles.presence}>本地功能预览 · 未连接其他设备</Text>
+            <Text style={styles.presence}>本机加密存储 · 未连接其他设备</Text>
           </View>
           <View style={styles.lockChip}>
             <AppIcon color={colors.inkMuted} name="lock" size={15} />
@@ -65,7 +66,9 @@ export function ChatScreen() {
         </View>
 
         <View style={styles.previewNotice}>
-          <Text style={styles.previewNoticeText}>消息和 Space 内容会在 App 重启后清空</Text>
+          <Text style={styles.previewNoticeText}>
+            内容保存在当前设备的加密数据库中，不会同步到其他设备
+          </Text>
         </View>
 
         <FlashList
@@ -103,9 +106,9 @@ export function ChatScreen() {
           />
           <MotionPressable
             accessibilityLabel="发送消息"
-            disabled={!draft.trim()}
-            onPress={send}
-            style={[styles.sendButton, !draft.trim() && styles.sendButtonDisabled]}
+            disabled={busy || !draft.trim()}
+            onPress={() => void send()}
+            style={[styles.sendButton, (busy || !draft.trim()) && styles.sendButtonDisabled]}
             testID="chat-send"
           >
             <AppIcon color={colors.surfaceRaised} name="send" size={22} />
@@ -169,7 +172,9 @@ function MessageRow({
       >
         <Text style={[styles.messageText, isSelf && styles.selfMessageText]}>{item.body}</Text>
         <View style={styles.messageMeta}>
-          <Text style={[styles.time, isSelf && styles.selfTime]}>{item.createdAtLabel}</Text>
+          <Text style={[styles.time, isSelf && styles.selfTime]}>
+            {formatMessageTime(item.createdAtMs)}
+          </Text>
           {item.savedItemIds.length > 0 ? (
             <View style={styles.savedIndicator}>
               <AppIcon

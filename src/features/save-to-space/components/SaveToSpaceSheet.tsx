@@ -8,7 +8,7 @@ import { colors, radius, spacing, typography } from '@/design/tokens';
 import type { Message } from '@/domain/message/types';
 import type { PreviewSharedItemKind } from '@/domain/shared-item/types';
 import { previewKindOptions } from '@/features/shared-item/shared-item-presenters';
-import { usePreviewWorkspace } from '@/stores/preview-workspace/PreviewWorkspaceProvider';
+import { useWorkspace } from '@/stores/workspace/WorkspaceProvider';
 
 export function SaveToSpaceSheet({
   message,
@@ -21,14 +21,14 @@ export function SaveToSpaceSheet({
   onSaved: (message: string) => void;
   visible: boolean;
 }) {
-  const { commands } = usePreviewWorkspace();
+  const { busy, commands } = useWorkspace();
   const [kind, setKind] = useState<PreviewSharedItemKind>('note');
   const [title, setTitle] = useState(message.body.slice(0, 24));
   const [detail, setDetail] = useState(message.body);
   const [error, setError] = useState('');
 
-  const save = () => {
-    const result = commands.saveMessageToSpace({
+  const save = async () => {
+    const result = await commands.saveMessageToSpace({
       messageId: message.id,
       kind,
       title,
@@ -40,8 +40,10 @@ export function SaveToSpaceSheet({
         setError('请填写标题');
       } else if (result.reason === 'duplicate-item') {
         setError('这条消息已经保存为相同类型');
-      } else {
+      } else if (result.reason === 'message-not-found') {
         setError('原始消息已不存在，请重新选择');
+      } else {
+        setError('暂时无法写入本机数据，请稍后重试');
       }
       return;
     }
@@ -54,13 +56,13 @@ export function SaveToSpaceSheet({
 
   return (
     <BottomSheet
-      description="内容只保留在当前运行会话，不会同步到其他设备。"
+      description="内容只保存在当前设备，不会同步到其他设备。"
       footer={
         <MotionPressable
           accessibilityLabel="保存到 Space"
-          disabled={!title.trim()}
-          onPress={save}
-          style={[styles.saveButton, !title.trim() && styles.saveButtonDisabled]}
+          disabled={busy || !title.trim()}
+          onPress={() => void save()}
+          style={[styles.saveButton, (busy || !title.trim()) && styles.saveButtonDisabled]}
           testID="save-to-space-submit"
         >
           <Text style={styles.saveButtonText}>保存到 Space</Text>

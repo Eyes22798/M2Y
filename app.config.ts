@@ -48,6 +48,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     android: {
       package: environment.identifier,
+      allowBackup: false,
       adaptiveIcon: {
         backgroundColor: '#101417',
         foregroundImage: './assets/images/android-icon-foreground.png',
@@ -71,7 +72,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       [
         'expo-secure-store',
         {
-          configureAndroidBackup: true,
+          configureAndroidBackup: false,
           faceIDPermission: '允许 M2Y 使用面容 ID 解锁你的私密协作空间。',
         },
       ],
