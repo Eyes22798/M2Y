@@ -1,0 +1,43 @@
+{
+  "id": "m2y-product-progress-roadmap",
+  "name": "m2y-product-progress-roadmap",
+  "title": "M2Y 项目完成度与产品路线总控",
+  "description": "记录 M2Y 当前完成度基线，并通过五个可独立验收的子任务持续跟踪完整 Figma/PRD P0 产品路线。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": "project-roadmap",
+  "package": null,
+  "priority": "P0",
+  "creator": "heloxM2Y",
+  "assignee": "heloxM2Y",
+  "createdAt": "2026-08-20",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-20-android-production-identity-pairing",
+    "08-20-ciphertext-sync-foundation",
+    "08-20-rich-chat-file-lifecycle",
+    "08-20-space-extended-product-surfaces",
+    "08-20-security-settings-release-readiness"
+  ],
+  "parent": null,
+  "relatedFiles": [
+    "README.md",
+    "M2Y_PRD—1786520919670/M2Y_PRD_修订版.md",
+    "M2Y_PRD—1786520919670/M2Y_设计稿_PRD差距与修改方案.md",
+    ".trellis/tasks/archive/2026-08/08-13-figma-mvp-basic-functionality/prd.md",
+    ".trellis/tasks/archive/2026-08/08-20-android-security-data-foundation/prd.md",
+    ".trellis/tasks/archive/2026-08/08-20-android-e2ee-native-spike/prd.md"
+  ],
+  "notes": "父级总控任务；后续功能通过 children 独立规划、实施、验收和归档。",
+  "meta": {
+    "baselineDate": "2026-08-20",
+    "baselineFullProductPercent": 33,
+    "platformPriority": "android-first"
+  }
+}

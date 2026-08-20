@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"复核用户页面、交互状态、可访问性与真机证据。"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"复核持久化、同步、服务端和原生边界的可验证性。"}
+{"file":".trellis/tasks/08-20-m2y-product-progress-roadmap/research/current-state-baseline.md","reason":"防止把开发 harness、占位页或技术 Spike 误计为产品能力。"}
+{"file":".trellis/tasks/08-20-m2y-product-progress-roadmap/research/progress-snapshots.md","reason":"核对完成度变化是否有连续证据与历史记录。"}
