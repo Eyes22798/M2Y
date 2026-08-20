@@ -73,18 +73,18 @@
 
 ## Acceptance Criteria
 
-- [ ] 启动应用后进入 Chat，底部可在 Chat、Space、Settings 间切换，视觉结构与选定 Figma 页面一致。
-- [ ] 用户输入非空消息并发送后，消息立即显示且输入框清空；空白消息不会被创建。
-- [ ] 用户从一条消息打开 Save to Space，选择笔记、待办或约定草稿并填写有效标题后能够保存。
-- [ ] 保存后的条目无需刷新即可出现在 Space；相同消息和类型的重复保存得到明确反馈且不产生重复数据。
-- [ ] Space 可以按全部、笔记、待办、约定筛选，并正确显示列表空态和筛选空态。
-- [ ] 用户可以打开统一详情页，编辑条目、更新允许状态并保存；返回 Space 后内容一致。
-- [ ] 用户删除条目前必须确认；确认后条目从 Space 消失，并且相关 Chat 保存状态不再声称条目仍存在。
-- [ ] Settings 只对真实可用能力提供可操作入口，延期的安全/同步能力不会显示为已完成。
-- [ ] App 重启后预览数据消失是首期预期行为，界面不宣称数据已持久化、加密、同步或获得另一端确认。
-- [ ] reducer/domain 单元测试覆盖创建、重复保存、编辑、状态更新、删除和未知 ID；组件测试覆盖发送、保存、筛选和删除确认主路径。
-- [ ] `pnpm format:check`、`pnpm typecheck`、`pnpm lint`、`pnpm deps:check`、`pnpm test --ci`、`pnpm config:check`、`pnpm exec expo-doctor` 和 `pnpm exec expo export --platform android` 全部通过。
-- [ ] 在目标 Android 尺寸上对 Chat、Save to Space、Space、Shared Item Detail、Settings 和至少一个空态进行截图对比，不存在阻断使用的布局溢出、键盘遮挡或不可点击控件。
+- [x] 启动应用后进入 Chat，底部可在 Chat、Space、Settings 间切换，视觉结构与选定 Figma 页面一致。
+- [x] 用户输入非空消息并发送后，消息立即显示且输入框清空；空白消息不会被创建。
+- [x] 用户从一条消息打开 Save to Space，选择笔记、待办或约定草稿并填写有效标题后能够保存。
+- [x] 保存后的条目无需刷新即可出现在 Space；相同消息和类型的重复保存得到明确反馈且不产生重复数据。
+- [x] Space 可以按全部、笔记、待办、约定筛选，并正确显示列表空态和筛选空态。
+- [x] 用户可以打开统一详情页，编辑条目、更新允许状态并保存；返回 Space 后内容一致。
+- [x] 用户删除条目前必须确认；确认后条目从 Space 消失，并且相关 Chat 保存状态不再声称条目仍存在。
+- [x] Settings 只对真实可用能力提供可操作入口，延期的安全/同步能力不会显示为已完成。
+- [x] App 重启后预览数据消失是首期预期行为，界面不宣称数据已持久化、加密、同步或获得另一端确认。
+- [x] reducer/domain 单元测试覆盖创建、重复保存、编辑、状态更新、删除和未知 ID；组件测试覆盖发送、保存、筛选和删除确认主路径。
+- [x] `pnpm format:check`、`pnpm typecheck`、`pnpm lint`、`pnpm deps:check`、`pnpm test --ci`、`pnpm config:check`、`pnpm exec expo-doctor` 和 `pnpm exec expo export --platform android` 全部通过。
+- [x] 在目标 Android 尺寸上对 Chat、Save to Space、Space、Shared Item Detail、Settings 和至少一个空态进行截图对比，不存在阻断使用的布局溢出、键盘遮挡或不可点击控件。
 
 ## Out of Scope
 
@@ -115,4 +115,3 @@
 - 当前源文件存在乱码文案；本任务触达页面必须修复，但不扩大为全仓库编码迁移。
 - 内存预览无法验证数据恢复、加密或同步，因此首期反馈只能验证信息架构和交互假设。
 - 真机安装/启动取决于执行时是否有 Android 设备或模拟器；没有设备时保留为明确待验收项，不能用 export 冒充真机通过。
-

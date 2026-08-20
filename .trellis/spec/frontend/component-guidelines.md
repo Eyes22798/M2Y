@@ -30,6 +30,52 @@ Use `AppIcon` from `src/design/primitives/AppIcon.tsx` instead of importing `Sym
 - These mocks isolate native initialization only; assertions remain focused on accessibility labels, visible state, typed command results, and navigation.
 - Do not suppress Worklets initialization errors or React `act` warnings. Replace the inappropriate native runtime boundary in the test environment.
 
+## Android Keyboard Layout Contract
+
+Any screen that keeps an input or primary action at the bottom edge must use the layout primitives from `react-native-keyboard-controller`. `KeyboardProvider` only establishes the native boundary; it does not keep fixed content above the Android IME by itself.
+
+```typescript
+// Fixed composer or input-bearing bottom sheet.
+<KeyboardAvoidingView automaticOffset behavior="padding" style={{ flex: 1 }}>
+  {content}
+</KeyboardAvoidingView>
+
+// Scrollable detail form.
+<KeyboardAwareScrollView
+  bottomOffset={spacing.xl}
+  keyboardDismissMode="interactive"
+  keyboardShouldPersistTaps="handled"
+>
+  {form}
+</KeyboardAwareScrollView>
+```
+
+Use the following contract:
+
+| Surface | Required behavior | Acceptance assertion |
+|---|---|---|
+| Screen with a fixed composer | `KeyboardAvoidingView` with `automaticOffset` and `behavior="padding"` wraps the screen content | With the Android IME open, the complete composer and send action remain above the keyboard |
+| Input-bearing `BottomSheet` | The sheet is bottom-aligned inside the same keyboard-avoiding wrapper | The focused field and primary footer action remain visible and clickable |
+| Scrollable detail form | `KeyboardAwareScrollView` has a token-based `bottomOffset` and interactive dismissal | The user can reach the last action, dismiss the IME, and submit without an obscured control |
+
+Good/base/bad cases:
+
+- Good: the keyboard is open and the bottom action remains fully visible and clickable.
+- Base: the keyboard is closed and the surface keeps its Figma-aligned spacing.
+- Bad: any composer, footer action, or final form control intersects the reported IME bounds.
+
+Tests must assert the wrapper configuration in Jest and exercise the affected flow. Final acceptance must also run on an Android device or emulator with the IME open; `tabBarHideOnKeyboard` and a Web viewport are not substitutes for this check.
+
+```typescript
+// Wrong: the provider and hidden tab bar do not resize this fixed composer.
+<View style={{ flex: 1 }}>{contentAndComposer}</View>
+
+// Correct: native keyboard progress drives the container inset.
+<KeyboardAvoidingView automaticOffset behavior="padding" style={{ flex: 1 }}>
+  {contentAndComposer}
+</KeyboardAvoidingView>
+```
+
 ## Styling
 
 - Repeated colors, spacing, radius, type, and motion values come from `src/design/tokens`.

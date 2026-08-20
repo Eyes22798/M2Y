@@ -65,7 +65,7 @@
   - 在可用 Android 设备/模拟器上验证启动、底部导航、Chat 键盘、保存、筛选、编辑和删除；没有设备时明确记录为待验收。
   - 截取 MVP 六个关键状态与 Figma 对比，修复阻断性的间距、溢出、键盘和点击区域问题。
 
-验证记录：390 x 844 Web 视口已完成 Chat、消息操作、Save to Space、Space、Shared Item Detail、Settings 与空筛选状态巡检，控制台无 warning/error；Android export 通过。当前环境没有 `adb`，所以 Android 真机/模拟器安装启动保留为环境待验收项。
+验证记录：390 x 844 Web 视口已完成 Chat、消息操作、Save to Space、Space、Shared Item Detail、Settings 与空筛选状态巡检，控制台无 warning/error。Android API 37.1（16 KB page-size）模拟器已完成冷启动、底部导航、Chat 键盘/发送、Save to Space、筛选/空态、详情编辑/状态、删除二次确认、Chat 保存标记回收和 Settings 验收；修复了首次巡检发现的 IME 遮挡。format、typecheck、lint、dependency、14 项测试、config、Expo Doctor 21/21、Android export、x86_64 Gradle build 和重装后冷启动均通过。
 
 ## Risky Files and Rollback Points
 
