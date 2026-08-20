@@ -12,7 +12,10 @@ Inspect the user-selected Figma node and implement it faithfully in the existing
 - [completed] Implement Chat and Save to Space.
 - [completed] Implement Space, Shared Item Detail, and Settings.
 - [completed] Run full Trellis checks and visual verification.
-- [in_progress] Close the completed MVP task and plan the Android-first local identity, encrypted storage, and security-boundary foundation.
+- [completed] Close and archive the completed Android MVP task.
+- [completed] Plan the Android-first local identity, encrypted storage, and security-boundary foundation.
+- [completed] Execute the approved Android-first encrypted storage and secure-boot foundation through native SQLCipher and emulator acceptance.
+- [completed] Run strong-biometric success/cancel/background-relock acceptance on a physical Android device.
 
 ## Decisions
 
@@ -23,4 +26,4 @@ Inspect the user-selected Figma node and implement it faithfully in the existing
 
 ## Blockers
 
-- None. Android API 37.1 (16 KB page-size) emulator acceptance now covers cold launch, navigation, Chat keyboard/send, Save to Space, filtering/empty state, detail edit/status, confirmed deletion, and Settings.
+- None for the approved Android security/data-foundation scope.
