@@ -1,6 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
+import { spacing } from '@/design/tokens';
 import { ChatScreen } from '@/features/chat/screens/ChatScreen';
 import { SharedItemDetailScreen } from '@/features/shared-item/screens/SharedItemDetailScreen';
 import { SpaceHomeScreen } from '@/features/space-home/screens/SpaceHomeScreen';
@@ -40,6 +41,11 @@ describe('preview workspace user flows', () => {
       </PreviewWorkspaceProvider>,
     );
 
+    expect(view.getByTestId('chat-keyboard-avoiding-view').props).toMatchObject({
+      automaticOffset: true,
+      behavior: 'padding',
+    });
+
     fireEvent.changeText(view.getByTestId('chat-input'), '  明天一起吃饭  ');
     await waitFor(() =>
       expect(view.getByTestId('chat-send').props.accessibilityState).toEqual({ disabled: false }),
@@ -51,6 +57,10 @@ describe('preview workspace user flows', () => {
 
     fireEvent.press(view.getByLabelText('对方的消息：周六去看电影吗？'));
     await waitFor(() => expect(view.getByLabelText('保存到 Space')).toBeTruthy());
+    expect(view.getByTestId('bottom-sheet-keyboard-avoiding-view').props).toMatchObject({
+      automaticOffset: true,
+      behavior: 'padding',
+    });
     fireEvent.press(view.getByLabelText('保存到 Space'));
     await waitFor(() => expect(view.getByTestId('save-to-space-submit')).toBeTruthy());
     fireEvent.press(view.getByTestId('save-to-space-submit'));
@@ -83,6 +93,11 @@ describe('preview workspace user flows', () => {
         <WorkspaceCount />
       </PreviewWorkspaceProvider>,
     );
+
+    expect(view.getByTestId('shared-item-keyboard-scroll').props).toMatchObject({
+      bottomOffset: spacing.xl,
+      keyboardDismissMode: 'interactive',
+    });
 
     fireEvent.press(view.getByLabelText('删除共享条目'));
     await waitFor(() => expect(view.getByLabelText('删除条目')).toBeTruthy());

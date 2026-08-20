@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MotionPressable } from '@/design/motion/MotionPressable';
@@ -74,7 +75,13 @@ export function SharedItemDetailScreen() {
         </MotionPressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView
+        bottomOffset={spacing.xl}
+        contentContainerStyle={styles.content}
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+        testID="shared-item-keyboard-scroll"
+      >
         <View style={styles.itemHero}>
           <View style={styles.heroIcon}>
             <AppIcon color={colors.accent} name={getKindIcon(item.kind)} size={28} />
@@ -172,7 +179,7 @@ export function SharedItemDetailScreen() {
         >
           <Text style={styles.saveText}>保存修改</Text>
         </MotionPressable>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <ConfirmDialog
         confirmLabel="删除条目"

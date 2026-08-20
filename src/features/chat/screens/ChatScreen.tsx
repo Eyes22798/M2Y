@@ -1,6 +1,7 @@
 import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
 import { useMemo, useRef, useState } from 'react';
 import { Keyboard, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MotionPressable } from '@/design/motion/MotionPressable';
@@ -43,100 +44,107 @@ export function ChatScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <View style={styles.header}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>TA</Text>
-        </View>
-        <View style={styles.headerCopy}>
-          <Text style={styles.person}>TA</Text>
-          <Text style={styles.presence}>本地功能预览 · 未连接其他设备</Text>
-        </View>
-        <View style={styles.lockChip}>
-          <AppIcon color={colors.inkMuted} name="lock" size={15} />
-          <Text style={styles.lockText}>未配对</Text>
-        </View>
-      </View>
-
-      <View style={styles.previewNotice}>
-        <Text style={styles.previewNoticeText}>消息和 Space 内容会在 App 重启后清空</Text>
-      </View>
-
-      <FlashList
-        contentContainerStyle={styles.threadContent}
-        data={state.messages}
-        keyExtractor={(item) => item.id}
-        keyboardDismissMode="interactive"
-        keyboardShouldPersistTaps="handled"
-        maintainVisibleContentPosition={{ autoscrollToBottomThreshold: 80 }}
-        renderItem={(info) => (
-          <MessageRow info={info} onOpenActions={(message) => setSelectedMessageId(message.id)} />
-        )}
-      />
-
-      {feedback ? (
-        <View style={styles.feedback}>
-          <AppIcon color={colors.accent} name="checkCircle" size={18} />
-          <Text style={styles.feedbackText}>{feedback}</Text>
-        </View>
-      ) : null}
-
-      <View style={styles.composer}>
-        <TextInput
-          accessibilityLabel="消息输入框"
-          maxLength={1000}
-          multiline
-          onChangeText={setDraft}
-          onFocus={() => setFeedback('')}
-          placeholder="说点什么…"
-          placeholderTextColor={colors.inkFaint}
-          ref={inputRef}
-          style={styles.input}
-          testID="chat-input"
-          value={draft}
-        />
-        <MotionPressable
-          accessibilityLabel="发送消息"
-          disabled={!draft.trim()}
-          onPress={send}
-          style={[styles.sendButton, !draft.trim() && styles.sendButtonDisabled]}
-          testID="chat-send"
-        >
-          <AppIcon color={colors.surfaceRaised} name="send" size={22} />
-        </MotionPressable>
-      </View>
-
-      <BottomSheet
-        description={selectedMessage?.body ?? ''}
-        onClose={() => setSelectedMessageId(null)}
-        title="消息操作"
-        visible={Boolean(selectedMessage)}
+      <KeyboardAvoidingView
+        automaticOffset
+        behavior="padding"
+        style={styles.content}
+        testID="chat-keyboard-avoiding-view"
       >
-        <MotionPressable
-          accessibilityLabel="保存到 Space"
-          onPress={openSaveSheet}
-          style={styles.actionRow}
-        >
-          <View style={styles.actionIcon}>
-            <AppIcon color={colors.accent} name="bookmark" size={20} />
+        <View style={styles.header}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>TA</Text>
           </View>
-          <View style={styles.actionCopy}>
-            <Text style={styles.actionTitle}>保存到 Space</Text>
-            <Text style={styles.actionDescription}>创建笔记、待办或约定草稿</Text>
+          <View style={styles.headerCopy}>
+            <Text style={styles.person}>TA</Text>
+            <Text style={styles.presence}>本地功能预览 · 未连接其他设备</Text>
           </View>
-          <AppIcon color={colors.inkFaint} name="chevronRight" size={18} />
-        </MotionPressable>
-        <Text style={styles.actionHint}>长按任意消息可以再次打开此菜单。</Text>
-      </BottomSheet>
+          <View style={styles.lockChip}>
+            <AppIcon color={colors.inkMuted} name="lock" size={15} />
+            <Text style={styles.lockText}>未配对</Text>
+          </View>
+        </View>
 
-      {saveMessage ? (
-        <SaveToSpaceSheet
-          key={saveMessage.id}
-          message={saveMessage}
-          onClose={() => setSaveMessageId(null)}
-          onSaved={setFeedback}
-          visible
+        <View style={styles.previewNotice}>
+          <Text style={styles.previewNoticeText}>消息和 Space 内容会在 App 重启后清空</Text>
+        </View>
+
+        <FlashList
+          contentContainerStyle={styles.threadContent}
+          data={state.messages}
+          keyExtractor={(item) => item.id}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          maintainVisibleContentPosition={{ autoscrollToBottomThreshold: 80 }}
+          renderItem={(info) => (
+            <MessageRow info={info} onOpenActions={(message) => setSelectedMessageId(message.id)} />
+          )}
         />
-      ) : null}
+
+        {feedback ? (
+          <View style={styles.feedback}>
+            <AppIcon color={colors.accent} name="checkCircle" size={18} />
+            <Text style={styles.feedbackText}>{feedback}</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.composer}>
+          <TextInput
+            accessibilityLabel="消息输入框"
+            maxLength={1000}
+            multiline
+            onChangeText={setDraft}
+            onFocus={() => setFeedback('')}
+            placeholder="说点什么…"
+            placeholderTextColor={colors.inkFaint}
+            ref={inputRef}
+            style={styles.input}
+            testID="chat-input"
+            value={draft}
+          />
+          <MotionPressable
+            accessibilityLabel="发送消息"
+            disabled={!draft.trim()}
+            onPress={send}
+            style={[styles.sendButton, !draft.trim() && styles.sendButtonDisabled]}
+            testID="chat-send"
+          >
+            <AppIcon color={colors.surfaceRaised} name="send" size={22} />
+          </MotionPressable>
+        </View>
+
+        <BottomSheet
+          description={selectedMessage?.body ?? ''}
+          onClose={() => setSelectedMessageId(null)}
+          title="消息操作"
+          visible={Boolean(selectedMessage)}
+        >
+          <MotionPressable
+            accessibilityLabel="保存到 Space"
+            onPress={openSaveSheet}
+            style={styles.actionRow}
+          >
+            <View style={styles.actionIcon}>
+              <AppIcon color={colors.accent} name="bookmark" size={20} />
+            </View>
+            <View style={styles.actionCopy}>
+              <Text style={styles.actionTitle}>保存到 Space</Text>
+              <Text style={styles.actionDescription}>创建笔记、待办或约定草稿</Text>
+            </View>
+            <AppIcon color={colors.inkFaint} name="chevronRight" size={18} />
+          </MotionPressable>
+          <Text style={styles.actionHint}>长按任意消息可以再次打开此菜单。</Text>
+        </BottomSheet>
+
+        {saveMessage ? (
+          <SaveToSpaceSheet
+            key={saveMessage.id}
+            message={saveMessage}
+            onClose={() => setSaveMessageId(null)}
+            onSaved={setFeedback}
+            visible
+          />
+        ) : null}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -182,6 +190,7 @@ function MessageRow({
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.canvas },
+  content: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

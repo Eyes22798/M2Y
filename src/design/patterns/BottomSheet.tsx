@@ -1,5 +1,6 @@
 import type { PropsWithChildren, ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MotionPressable } from '@/design/motion/MotionPressable';
@@ -30,20 +31,31 @@ export function BottomSheet({
           onPress={onClose}
           style={StyleSheet.absoluteFill}
         />
-        <SafeAreaView edges={['bottom']} style={styles.sheet}>
-          <View style={styles.handle} />
-          <View style={styles.header}>
-            <View style={styles.headerCopy}>
-              <Text style={styles.title}>{title}</Text>
-              {description ? <Text style={styles.description}>{description}</Text> : null}
+        <KeyboardAvoidingView
+          automaticOffset
+          behavior="padding"
+          style={styles.keyboardAvoider}
+          testID="bottom-sheet-keyboard-avoiding-view"
+        >
+          <SafeAreaView edges={['bottom']} style={styles.sheet}>
+            <View style={styles.handle} />
+            <View style={styles.header}>
+              <View style={styles.headerCopy}>
+                <Text style={styles.title}>{title}</Text>
+                {description ? <Text style={styles.description}>{description}</Text> : null}
+              </View>
+              <MotionPressable
+                accessibilityLabel="关闭"
+                onPress={onClose}
+                style={styles.closeButton}
+              >
+                <AppIcon color={colors.inkMuted} name="close" size={20} />
+              </MotionPressable>
             </View>
-            <MotionPressable accessibilityLabel="关闭" onPress={onClose} style={styles.closeButton}>
-              <AppIcon color={colors.inkMuted} name="close" size={20} />
-            </MotionPressable>
-          </View>
-          <View style={styles.content}>{children}</View>
-          {footer ? <View style={styles.footer}>{footer}</View> : null}
-        </SafeAreaView>
+            <View style={styles.content}>{children}</View>
+            {footer ? <View style={styles.footer}>{footer}</View> : null}
+          </SafeAreaView>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -51,6 +63,7 @@ export function BottomSheet({
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: colors.overlay },
+  keyboardAvoider: { flex: 1, justifyContent: 'flex-end' },
   sheet: {
     maxHeight: '88%',
     paddingTop: spacing.sm,

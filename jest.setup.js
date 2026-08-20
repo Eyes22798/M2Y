@@ -51,9 +51,13 @@ jest.mock('@shopify/flash-list', () => {
 });
 jest.mock('react-native-keyboard-controller', () => {
   const React = require('react');
+  const { View } = require('react-native');
 
   return {
     KeyboardProvider: ({ children }) => React.createElement(React.Fragment, null, children),
+    KeyboardAvoidingView: ({ children, ...props }) => React.createElement(View, props, children),
+    KeyboardAwareScrollView: ({ children, contentContainerStyle, ...props }) =>
+      React.createElement(View, { ...props, style: contentContainerStyle }, children),
   };
 });
 jest.mock('react-native-safe-area-context', () => {
