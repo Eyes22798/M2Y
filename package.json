@@ -86,7 +86,10 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "better-sqlite3"
-    ]
+    ],
+    "patchedDependencies": {
+      "@react-native/gradle-plugin@0.85.3": "patches/@react-native__gradle-plugin@0.85.3.patch"
+    }
   },
   "lint-staged": {
     "*.{ts,tsx,js,mjs,cjs}": [

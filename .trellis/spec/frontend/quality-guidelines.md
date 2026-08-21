@@ -106,6 +106,7 @@ modules/m2y-crypto/app.plugin.js
 
 - Keep both Signal artifacts on one exact version; floating/ranged versions are forbidden.
 - Gradle runs on JDK 21 because the upstream classes use Java class-file version 65. Set `M2Y_JAVA_17_HOME` so React Native's included build can still select a compatible JDK 17 toolchain. The two paths must be different installed JDK roots and neither may contain a comma.
+- React Native `0.85.3` pins Foojay toolchain resolver `0.5.0`, which is incompatible with Gradle 9 when obsolete vendor metadata is parsed. Keep the pnpm patch that upgrades only the resolver convention to `1.0.0`; re-audit and remove it when React Native ships the fix.
 - Persist Maven, desugaring, and packaging configuration through `modules/m2y-crypto/app.plugin.js`; never depend on hand-edited generated `android/` files.
 - Use the Signal-owned publication endpoint referenced by the pinned upstream release. A network mirror may replace only the Gradle distribution URL, not artifact provenance or coordinates.
 - Keep `modules/*/android/build/` ignored. Test reports and compiled module outputs are generated artifacts, not source or task evidence.
@@ -117,6 +118,7 @@ modules/m2y-crypto/app.plugin.js
 |---|---|
 | Gradle runs on JDK 17 against libsignal 0.101.0 | Class-file version 65 failure; set JDK 21, do not downgrade verification |
 | React Native included build sees only JDK 21 | Expose the installed JDK 17 through `M2Y_JAVA_17_HOME` / Gradle installation paths |
+| Gradle 9 fails while evaluating Foojay vendor metadata | Verify the tracked `@react-native/gradle-plugin` pnpm patch applies resolver `1.0.0`; do not hand-edit `node_modules` |
 | Desugaring is absent after clean prebuild | Fail config/build verification; fix the config plugin |
 | Signal artifacts have different or floating versions | Fail review/config verification |
 | ARM64 APK contains another native ABI or testing/desktop JNI | Fail package audit and do not distribute the artifact |
@@ -134,6 +136,7 @@ modules/m2y-crypto/app.plugin.js
 - Run `:m2y-crypto:testDebugUnitTest` for store serialization/copy and protocol semantics.
 - Run `:m2y-crypto:connectedDebugAndroidTest` for Keystore AES-GCM, AtomicFile rollback, authentication/tag/version failures and cleanup.
 - Run a clean prebuild followed by both x86_64 and ARM64 debug builds. Audit the final APK entries and SHA-256; only the requested ABI and production `libsignal_jni.so` may be present.
+- Run `pnpm install --frozen-lockfile` and inspect the installed React Native settings plugin when changing the patch or lockfile; the resolver must remain `1.0.0` until upstream is fixed.
 - A physical ARM64 runtime row is required before closing an Android acceptance task; an emulator or successful package inspection is not a substitute.
 
 ### 7. Wrong vs Correct
