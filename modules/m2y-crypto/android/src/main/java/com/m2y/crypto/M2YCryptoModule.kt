@@ -1,6 +1,8 @@
 package com.m2y.crypto
 
 import android.os.Build
+import com.m2y.crypto.production.ProductionIdentityException
+import com.m2y.crypto.production.ProductionIdentityManager
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
@@ -10,6 +12,12 @@ private const val LIBSIGNAL_VERSION = "0.101.0"
 private const val PROTOCOL_ID = "signal-pqxdh-double-ratchet"
 
 class M2YCryptoModule : Module() {
+  private val productionManager: ProductionIdentityManager by lazy {
+    ProductionIdentityManager(
+      appContext.reactContext ?: throw Exceptions.AppContextLost(),
+    )
+  }
+
   override fun definition() =
     ModuleDefinition {
       Name("M2YCrypto")
@@ -59,12 +67,52 @@ class M2YCryptoModule : Module() {
       AsyncFunction("cleanupAcceptance") { runId: String ->
         runAcceptance { it.cleanup(runId) }
       }
+
+      AsyncFunction("inspectProductionIdentity") {
+        runProduction { it.inspectProductionIdentity() }
+      }
+
+      AsyncFunction("prepareIdentityRegistration") { displayName: String? ->
+        runProduction { it.prepareIdentityRegistration(displayName) }
+      }
+
+      AsyncFunction("commitIdentityRegistration") { operationId: String, receiptId: String ->
+        runProduction { it.commitIdentityRegistration(operationId, receiptId) }
+      }
+
+      AsyncFunction("signDeviceRequest") { canonicalRequest: String ->
+        runProduction { it.signDeviceRequest(canonicalRequest) }
+      }
+
+      AsyncFunction("resetProductionIdentity") {
+        try {
+          productionIdentityManager().resetProductionIdentity()
+          mapOf("schemaVersion" to 1, "status" to "reset")
+        } catch (error: ProductionIdentityException) {
+          throw ProductionIdentityCodedException(error.safeCode())
+        }
+      }
     }
 
   private fun acceptanceHarness(): M2YCryptoAcceptanceHarness =
     M2YCryptoAcceptanceHarness(
       appContext.reactContext ?: throw Exceptions.AppContextLost(),
     )
+
+  private fun productionIdentityManager(): ProductionIdentityManager = productionManager
+
+  private fun runProduction(
+    operation: (ProductionIdentityManager) -> Map<String, Any>,
+  ): Map<String, Any> =
+    try {
+      operation(productionIdentityManager())
+    } catch (error: ProductionIdentityException) {
+      throw ProductionIdentityCodedException(error.safeCode())
+    } catch (_: LinkageError) {
+      throw ProductionIdentityCodedException("identity-native-runtime-unavailable")
+    } catch (_: Exception) {
+      throw ProductionIdentityCodedException("identity-operation-failed")
+    }
 
   private fun runAcceptance(
     operation: (M2YCryptoAcceptanceHarness) -> Map<String, Any>,
@@ -101,5 +149,12 @@ private class LibsignalProtocolException :
   CodedException(
     "E_M2Y_CRYPTO_PROTOCOL",
     "Native protocol acceptance failed.",
+    null,
+  )
+
+private class ProductionIdentityCodedException(safeCode: String) :
+  CodedException(
+    "E_M2Y_PRODUCTION_IDENTITY",
+    safeCode,
     null,
   )

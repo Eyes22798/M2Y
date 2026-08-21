@@ -11,7 +11,7 @@
 
 ## B. Client domain, configuration and navigation contracts
 
-- [ ] Add framework-free identity/pairing types, state machine, commands, results and exhaustive tests.
+- [x] Add framework-free identity/pairing types, state machine, commands, results and exhaustive tests.
 - [ ] Add strict public config reader and development-only local server override; preserve HTTPS-only preview/production rules.
 - [ ] Add `IdentityRelationshipProvider` and gate under `SecureWorkspaceGate.ready`; main private screens mount only when relationship is active.
 - [ ] Preserve existing SQLCipher workspace data across the no-identity upgrade path and remove unconditional `/chat` entry behavior.
@@ -19,12 +19,12 @@
 
 ## C. Gate 2 — Production native identity and transaction store
 
-- [ ] Split production native packages/classes/API from all Spike harness code.
-- [ ] Implement native SQLite schema/migration, per-secret Keystore AES-GCM record encryption and single executor.
-- [ ] Implement one production identity, stable ID, device ID, libsignal prekeys and P-256 device-auth signing key.
+- [x] Split production native packages/classes/API from all Spike harness code.
+- [x] Implement native SQLite schema/migration, per-secret Keystore AES-GCM record encryption and single executor.
+- [x] Implement one production identity, stable ID, device ID, libsignal prekeys and P-256 device-auth signing key.
 - [ ] Implement working-copy protocol transactions, candidate isolation, pairing inbox/outbox, replay tombstones and active relationship uniqueness.
-- [ ] Add strict Expo Module production DTOs and TypeScript decoders; forbid keys/raw records/native exception strings.
-- [ ] Extend unified local reset so SQLCipher, production identity, device-auth key and dev acceptance materials are all cleaned or the app remains fail-closed.
+- [x] Add strict Expo Module production DTOs and TypeScript decoders; forbid keys/raw records/native exception strings.
+- [x] Extend unified local reset so SQLCipher, production identity, device-auth key and dev acceptance materials are all cleaned or the app remains fail-closed.
 - [ ] Add JVM/instrumentation tests for restart, corrupt records, missing keys, signing, rollback, replay and cleanup.
 
 ## D. Pairing service API and signed transport

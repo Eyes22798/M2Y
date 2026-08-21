@@ -31,3 +31,26 @@ export function runPerformanceAcceptance(runId: string): Promise<unknown> {
 export function cleanupAcceptance(runId: string): Promise<unknown> {
   return nativeModule.cleanupAcceptance(runId);
 }
+
+export function inspectProductionIdentity(): Promise<unknown> {
+  return nativeModule.inspectProductionIdentity();
+}
+
+export function prepareIdentityRegistration(displayName: string | null): Promise<unknown> {
+  return nativeModule.prepareIdentityRegistration(displayName);
+}
+
+export function commitIdentityRegistration(
+  operationId: string,
+  receiptId: string,
+): Promise<unknown> {
+  return nativeModule.commitIdentityRegistration(operationId, receiptId);
+}
+
+export function signDeviceRequest(canonicalRequest: string): Promise<unknown> {
+  return nativeModule.signDeviceRequest(canonicalRequest);
+}
+
+export function resetProductionIdentity(): Promise<unknown> {
+  return nativeModule.resetProductionIdentity();
+}

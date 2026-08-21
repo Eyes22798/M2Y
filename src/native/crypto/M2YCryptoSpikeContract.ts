@@ -1,3 +1,11 @@
+import {
+  hasExactNativeKeys,
+  invalidNativeResponse,
+  isNativeRecord,
+  isPositiveSafeInteger,
+  isUuidV4,
+} from './strict-native-decoder';
+
 const LIBSIGNAL_VERSION = '0.101.0';
 const PROTOCOL_ID = 'signal-pqxdh-double-ratchet';
 
@@ -138,20 +146,8 @@ export type M2YCryptoCleanupAcceptance =
       status: 'passed';
     }>;
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null;
-}
-
-function hasExactKeys(value: Readonly<Record<string, unknown>>, expected: readonly string[]) {
-  const actual = Object.keys(value).sort();
-  return actual.length === expected.length && expected.every((key, index) => actual[index] === key);
-}
-
 function isRunId(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(value)
-  );
+  return isUuidV4(value);
 }
 
 function hasExactChecks<const T extends readonly string[]>(
@@ -166,7 +162,7 @@ function hasExactChecks<const T extends readonly string[]>(
 }
 
 function isPositiveRevision(value: unknown): value is number {
-  return Number.isSafeInteger(value) && (value as number) > 0;
+  return isPositiveSafeInteger(value);
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -178,7 +174,7 @@ function isFailure(
   stage: AcceptanceStage,
 ): value is M2YCryptoAcceptanceFailure {
   return (
-    hasExactKeys(value, ['code', 'runId', 'stage', 'status']) &&
+    hasExactNativeKeys(value, ['code', 'runId', 'stage', 'status']) &&
     value.status === 'failed' &&
     value.stage === stage &&
     isRunId(value.runId) &&
@@ -186,19 +182,21 @@ function isFailure(
   );
 }
 
-function invalidResponse(): never {
-  throw new Error('m2y-crypto-invalid-native-response');
-}
-
 export function decodeM2YCryptoPendingRunId(value: unknown): string | null {
   if (value === null || isRunId(value)) return value;
-  return invalidResponse();
+  return invalidNativeResponse();
 }
 
 export function decodeM2YCryptoSpikeInfo(value: unknown): M2YCryptoSpikeInfo {
   if (
-    !isRecord(value) ||
-    !hasExactKeys(value, ['abi', 'libraryVersion', 'nativeLoadVerified', 'platform', 'protocol']) ||
+    !isNativeRecord(value) ||
+    !hasExactNativeKeys(value, [
+      'abi',
+      'libraryVersion',
+      'nativeLoadVerified',
+      'platform',
+      'protocol',
+    ]) ||
     typeof value.abi !== 'string' ||
     value.abi.length === 0 ||
     value.libraryVersion !== LIBSIGNAL_VERSION ||
@@ -206,7 +204,7 @@ export function decodeM2YCryptoSpikeInfo(value: unknown): M2YCryptoSpikeInfo {
     value.platform !== 'android' ||
     value.protocol !== PROTOCOL_ID
   ) {
-    return invalidResponse();
+    return invalidNativeResponse();
   }
 
   return {
@@ -219,10 +217,10 @@ export function decodeM2YCryptoSpikeInfo(value: unknown): M2YCryptoSpikeInfo {
 }
 
 export function decodeM2YCryptoFreshAcceptance(value: unknown): M2YCryptoFreshAcceptance {
-  if (!isRecord(value)) return invalidResponse();
+  if (!isNativeRecord(value)) return invalidNativeResponse();
   if (isFailure(value, 'fresh')) return value;
   if (
-    !hasExactKeys(value, ['checks', 'code', 'revision', 'runId', 'stage', 'status']) ||
+    !hasExactNativeKeys(value, ['checks', 'code', 'revision', 'runId', 'stage', 'status']) ||
     value.status !== 'passed' ||
     value.stage !== 'fresh' ||
     value.code !== 'fresh-pqxdh-checkpoint-verified' ||
@@ -230,7 +228,7 @@ export function decodeM2YCryptoFreshAcceptance(value: unknown): M2YCryptoFreshAc
     !isPositiveRevision(value.revision) ||
     !hasExactChecks(value.checks, FRESH_ACCEPTANCE_CHECKS)
   ) {
-    return invalidResponse();
+    return invalidNativeResponse();
   }
   return {
     checks: FRESH_ACCEPTANCE_CHECKS,
@@ -243,10 +241,10 @@ export function decodeM2YCryptoFreshAcceptance(value: unknown): M2YCryptoFreshAc
 }
 
 export function decodeM2YCryptoResumeAcceptance(value: unknown): M2YCryptoResumeAcceptance {
-  if (!isRecord(value)) return invalidResponse();
+  if (!isNativeRecord(value)) return invalidNativeResponse();
   if (isFailure(value, 'resume')) return value;
   if (
-    !hasExactKeys(value, ['checks', 'code', 'revision', 'runId', 'stage', 'status']) ||
+    !hasExactNativeKeys(value, ['checks', 'code', 'revision', 'runId', 'stage', 'status']) ||
     value.status !== 'passed' ||
     value.stage !== 'resume' ||
     value.code !== 'resume-checkpoint-verified' ||
@@ -254,7 +252,7 @@ export function decodeM2YCryptoResumeAcceptance(value: unknown): M2YCryptoResume
     !isPositiveRevision(value.revision) ||
     !hasExactChecks(value.checks, RESUME_ACCEPTANCE_CHECKS)
   ) {
-    return invalidResponse();
+    return invalidNativeResponse();
   }
   return {
     checks: RESUME_ACCEPTANCE_CHECKS,
@@ -267,10 +265,10 @@ export function decodeM2YCryptoResumeAcceptance(value: unknown): M2YCryptoResume
 }
 
 export function decodeM2YCryptoNegativeAcceptance(value: unknown): M2YCryptoNegativeAcceptance {
-  if (!isRecord(value)) return invalidResponse();
+  if (!isNativeRecord(value)) return invalidNativeResponse();
   if (isFailure(value, 'negative')) return value;
   if (
-    !hasExactKeys(value, ['checks', 'code', 'revision', 'runId', 'stage', 'status']) ||
+    !hasExactNativeKeys(value, ['checks', 'code', 'revision', 'runId', 'stage', 'status']) ||
     value.status !== 'passed' ||
     value.stage !== 'negative' ||
     value.code !== 'negative-cases-verified' ||
@@ -278,7 +276,7 @@ export function decodeM2YCryptoNegativeAcceptance(value: unknown): M2YCryptoNega
     !isPositiveRevision(value.revision) ||
     !hasExactChecks(value.checks, NEGATIVE_ACCEPTANCE_CHECKS)
   ) {
-    return invalidResponse();
+    return invalidNativeResponse();
   }
   return {
     checks: NEGATIVE_ACCEPTANCE_CHECKS,
@@ -293,18 +291,26 @@ export function decodeM2YCryptoNegativeAcceptance(value: unknown): M2YCryptoNega
 export function decodeM2YCryptoPerformanceAcceptance(
   value: unknown,
 ): M2YCryptoPerformanceAcceptance {
-  if (!isRecord(value)) return invalidResponse();
+  if (!isNativeRecord(value)) return invalidNativeResponse();
   if (isFailure(value, 'performance')) return value;
   if (
-    !hasExactKeys(value, ['checks', 'code', 'metrics', 'revision', 'runId', 'stage', 'status']) ||
+    !hasExactNativeKeys(value, [
+      'checks',
+      'code',
+      'metrics',
+      'revision',
+      'runId',
+      'stage',
+      'status',
+    ]) ||
     value.status !== 'passed' ||
     value.stage !== 'performance' ||
     value.code !== 'performance-verified' ||
     !isRunId(value.runId) ||
     !isPositiveRevision(value.revision) ||
     !hasExactChecks(value.checks, PERFORMANCE_ACCEPTANCE_CHECKS) ||
-    !isRecord(value.metrics) ||
-    !hasExactKeys(value.metrics, [
+    !isNativeRecord(value.metrics) ||
+    !hasExactNativeKeys(value.metrics, [
       'attachmentBytes',
       'fileBytes',
       'memoryDeltaBytes',
@@ -324,7 +330,7 @@ export function decodeM2YCryptoPerformanceAcceptance(
     !isFiniteNumber(value.metrics.totalMs) ||
     value.metrics.totalMs < 0
   ) {
-    return invalidResponse();
+    return invalidNativeResponse();
   }
   return {
     checks: PERFORMANCE_ACCEPTANCE_CHECKS,
@@ -346,17 +352,17 @@ export function decodeM2YCryptoPerformanceAcceptance(
 }
 
 export function decodeM2YCryptoCleanupAcceptance(value: unknown): M2YCryptoCleanupAcceptance {
-  if (!isRecord(value)) return invalidResponse();
+  if (!isNativeRecord(value)) return invalidNativeResponse();
   if (isFailure(value, 'cleanup')) return value;
   if (
-    !hasExactKeys(value, ['checks', 'code', 'runId', 'stage', 'status']) ||
+    !hasExactNativeKeys(value, ['checks', 'code', 'runId', 'stage', 'status']) ||
     value.status !== 'passed' ||
     value.stage !== 'cleanup' ||
     value.code !== 'acceptance-state-cleaned' ||
     !isRunId(value.runId) ||
     !hasExactChecks(value.checks, CLEANUP_ACCEPTANCE_CHECKS)
   ) {
-    return invalidResponse();
+    return invalidNativeResponse();
   }
   return {
     checks: CLEANUP_ACCEPTANCE_CHECKS,

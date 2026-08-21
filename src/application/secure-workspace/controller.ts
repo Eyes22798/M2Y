@@ -4,6 +4,7 @@ import type {
   EncryptedDatabaseManager,
   KeyEnvelopeV1,
   KeyReadResult,
+  LocalCryptoDataResetter,
   ProtectionMode,
   SecureWorkspaceController,
   SecureWorkspaceEvent,
@@ -16,6 +17,7 @@ type ControllerDependencies = Readonly<{
   keyStore: DatabaseKeyStore;
   databaseManager: EncryptedDatabaseManager;
   keyGenerator: DatabaseKeyGenerator;
+  localCryptoDataResetter: LocalCryptoDataResetter;
   platformSupported: boolean;
 }>;
 
@@ -186,6 +188,11 @@ export class DefaultSecureWorkspaceController implements SecureWorkspaceControll
     this.transition({ type: 'check' });
 
     if (activeSession && !(await safeClose(activeSession))) {
+      this.transition({ type: 'require-recovery', reason: 'reset-failed' });
+      return;
+    }
+    const cryptoReset = await this.dependencies.localCryptoDataResetter.resetLocalCryptoData();
+    if (!cryptoReset.ok) {
       this.transition({ type: 'require-recovery', reason: 'reset-failed' });
       return;
     }

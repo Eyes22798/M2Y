@@ -19,6 +19,7 @@ This directory contains guidelines for frontend development. Fill in each file w
 | [Hook Guidelines](./hook-guidelines.md) | Custom hooks, data fetching patterns | To fill |
 | [State Management](./state-management.md) | Committed workspace session and local UI-state contracts | Active |
 | [Quality Guidelines](./quality-guidelines.md) | SDK 56, config, native build, and quality contracts | Active |
+| [Production Identity](./production-identity.md) | Android identity persistence, Keystore, DTO, and reset contracts | Active |
 | [Type Safety](./type-safety.md) | Type patterns, validation | To fill |
 
 ---

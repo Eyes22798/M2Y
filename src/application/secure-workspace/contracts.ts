@@ -105,6 +105,13 @@ export interface DatabaseKeyGenerator {
   generateDatabaseKey(): Promise<DatabaseHexKey>;
 }
 
+export type LocalCryptoDataResetResult =
+  Readonly<{ ok: true }> | Readonly<{ ok: false; reason: 'crypto-cleanup-failed' }>;
+
+export interface LocalCryptoDataResetter {
+  resetLocalCryptoData(): Promise<LocalCryptoDataResetResult>;
+}
+
 export interface SecureWorkspaceController {
   getState(): SecureWorkspaceState;
   subscribe(listener: () => void): () => void;

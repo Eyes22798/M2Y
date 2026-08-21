@@ -8,6 +8,7 @@ import type {
   EncryptedDatabaseManager,
   EnvelopeReadResult,
   KeyReadResult,
+  LocalCryptoDataResetter,
   SecureWriteResult,
 } from './contracts';
 import { parseDatabaseHexKey } from './contracts';
@@ -53,13 +54,17 @@ function createHarness({
   const keyGenerator: DatabaseKeyGenerator = {
     generateDatabaseKey: jest.fn(async () => key),
   };
+  const localCryptoDataResetter: LocalCryptoDataResetter = {
+    resetLocalCryptoData: jest.fn(async () => ({ ok: true as const })),
+  };
   const controller = new DefaultSecureWorkspaceController({
     keyStore,
     databaseManager,
     keyGenerator,
+    localCryptoDataResetter,
     platformSupported: true,
   });
-  return { controller, databaseManager, keyStore, session };
+  return { controller, databaseManager, keyStore, localCryptoDataResetter, session };
 }
 
 function createTestKey() {
@@ -153,6 +158,25 @@ describe('DefaultSecureWorkspaceController', () => {
       status: 'recoveryRequired',
       reason: 'reset-failed',
     });
+  });
+
+  it('keeps workspace data and remains fail-closed when native crypto cleanup fails', async () => {
+    const { controller, databaseManager, localCryptoDataResetter } = createHarness({
+      databasePresent: true,
+    });
+    await controller.inspect();
+    jest.mocked(localCryptoDataResetter.resetLocalCryptoData).mockResolvedValueOnce({
+      ok: false,
+      reason: 'crypto-cleanup-failed',
+    });
+
+    await controller.resetLocalData();
+
+    expect(controller.getState()).toEqual({
+      status: 'recoveryRequired',
+      reason: 'reset-failed',
+    });
+    expect(databaseManager.deleteDatabase).not.toHaveBeenCalled();
   });
 
   it('closes a biometric session before returning to locked on background', async () => {

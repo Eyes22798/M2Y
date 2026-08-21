@@ -4,6 +4,7 @@ import type { SecureWorkspaceController } from '@/application/secure-workspace/c
 import { DefaultSecureWorkspaceController } from '@/application/secure-workspace/controller';
 import { ExpoDatabaseKeyStore } from '@/data/secure-store/ExpoDatabaseKeyStore';
 import { SqlCipherDatabase } from '@/data/sqlite/SqlCipherDatabase';
+import { M2YCryptoLocalDataResetter } from '@/native/crypto/M2YCryptoLocalDataResetter';
 import { ExpoSecureRandom } from '@/native/random/ExpoSecureRandom';
 
 export type AppRuntime = Readonly<{
@@ -21,6 +22,7 @@ export function createAppRuntime(): AppRuntime {
       keyStore: new ExpoDatabaseKeyStore(),
       databaseManager,
       keyGenerator: random,
+      localCryptoDataResetter: new M2YCryptoLocalDataResetter(),
       platformSupported: Platform.OS === 'android',
     }),
   };
