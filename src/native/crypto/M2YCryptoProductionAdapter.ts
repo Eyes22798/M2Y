@@ -1,11 +1,32 @@
 import {
+  ackPairingOutbox as ackNativePairingOutbox,
+  activatePairedRelationship as activateNativePairedRelationship,
   commitIdentityRegistration as commitNativeIdentityRegistration,
+  confirmPairingSafetyNumber as confirmNativePairingSafetyNumber,
   inspectProductionIdentity as inspectNativeProductionIdentity,
+  listPairingOutbox as listNativePairingOutbox,
   prepareIdentityRegistration as prepareNativeIdentityRegistration,
   resetProductionIdentity as resetNativeProductionIdentity,
+  respondToPairingRequest as respondToNativePairingRequest,
   signDeviceRequest as signNativeDeviceRequest,
+  sweepPairingState as sweepNativePairingState,
 } from '../../../modules/m2y-crypto';
 
+import {
+  decodeProductionPairingAcknowledgement,
+  decodeProductionPairingActivation,
+  decodeProductionPairingConfirmation,
+  decodeProductionPairingDecision,
+  decodeProductionPairingOutbox,
+  decodeProductionPairingSweep,
+  type ProductionPairingAcknowledgement,
+  type ProductionPairingAction,
+  type ProductionPairingActivation,
+  type ProductionPairingConfirmation,
+  type ProductionPairingDecision,
+  type ProductionPairingOutbox,
+  type ProductionPairingSweep,
+} from './M2YCryptoPairingContract';
 import {
   decodeProductionDeviceSignature,
   decodeProductionIdentityInspection,
@@ -17,6 +38,16 @@ import {
   type ProductionIdentityReset,
 } from './M2YCryptoProductionContract';
 
+export type {
+  ProductionPairingAcknowledgement,
+  ProductionPairingAction,
+  ProductionPairingActivation,
+  ProductionPairingConfirmation,
+  ProductionPairingDecision,
+  ProductionPairingOutbox,
+  ProductionPairingOutboxItem,
+  ProductionPairingSweep,
+} from './M2YCryptoPairingContract';
 export type {
   ProductionDeviceSignature,
   ProductionIdentityInspection,
@@ -76,4 +107,58 @@ export function signM2YDeviceRequest(canonicalRequest: string): Promise<Producti
 
 export function resetM2YProductionIdentity(): Promise<ProductionIdentityReset> {
   return callNative(resetNativeProductionIdentity, decodeProductionIdentityReset);
+}
+
+/**
+ * The pairing calls below have no application-layer port yet, for the same reason
+ * `commitM2YIdentityRegistration` and `signM2YDeviceRequest` do not: they only become reachable once
+ * the pairing API client exists to carry the queued packets. Staging an inbound candidate is not
+ * exposed at all — opening a peer packet needs the libsignal session that arrives with the protocol
+ * engine, so the native module keeps that entry point package-private.
+ */
+export function respondToM2YPairingRequest(
+  requestId: string,
+  action: ProductionPairingAction,
+): Promise<ProductionPairingDecision> {
+  return callNative(
+    () => respondToNativePairingRequest(requestId, action),
+    decodeProductionPairingDecision,
+  );
+}
+
+export function confirmM2YPairingSafetyNumber(
+  requestId: string,
+): Promise<ProductionPairingConfirmation> {
+  return callNative(
+    () => confirmNativePairingSafetyNumber(requestId),
+    decodeProductionPairingConfirmation,
+  );
+}
+
+export function activateM2YPairedRelationship(
+  requestId: string,
+  pairId: string,
+): Promise<ProductionPairingActivation> {
+  return callNative(
+    () => activateNativePairedRelationship(requestId, pairId),
+    decodeProductionPairingActivation,
+  );
+}
+
+export function listM2YPairingOutbox(): Promise<ProductionPairingOutbox> {
+  return callNative(listNativePairingOutbox, decodeProductionPairingOutbox);
+}
+
+export function ackM2YPairingOutbox(
+  operationId: string,
+  receiptId: string,
+): Promise<ProductionPairingAcknowledgement> {
+  return callNative(
+    () => ackNativePairingOutbox(operationId, receiptId),
+    decodeProductionPairingAcknowledgement,
+  );
+}
+
+export function sweepM2YPairingState(): Promise<ProductionPairingSweep> {
+  return callNative(sweepNativePairingState, decodeProductionPairingSweep);
 }

@@ -36,6 +36,7 @@ public final class ProductionIdentityManager {
   private final ProductionIdentityDatabase database;
   private final ProductionDeviceSigner deviceSigner;
   private final ExecutorService executor;
+  private final PairingTransactionStore pairingStore;
   private final ProductionRecordCipher recordCipher;
   private final SecureRandom secureRandom;
 
@@ -64,6 +65,41 @@ public final class ProductionIdentityManager {
     this.deviceSigner = deviceSigner;
     this.secureRandom = secureRandom;
     this.executor = executor;
+    this.pairingStore = new PairingTransactionStore(database, recordCipher);
+  }
+
+  /**
+   * Retires a delivered pairing intent. The receipt is required and shape-checked so a caller cannot
+   * clear the queue for work it never handed to the server, but schema v1 has no column for it, so
+   * it is proof of delivery rather than a stored fact.
+   */
+  public Map<String, Object> ackPairingOutbox(String operationId, String receiptId)
+      throws ProductionIdentityException {
+    validateUuid(operationId, "pairing-outbox-invalid");
+    if (receiptId == null || !receiptId.matches("^[A-Za-z0-9_-]{8,128}$")) {
+      throw new ProductionIdentityException("pairing-outbox-receipt-invalid");
+    }
+
+    return execute(
+        () ->
+            pairingStore.acknowledgeOutbox(
+                requireRegisteredConnection(), operationId, System.currentTimeMillis()));
+  }
+
+  /**
+   * Applies the server's activation for a request the local user already accepted and verified. Only
+   * the pair id is taken from the caller; the peer route and identity come from the stored candidate,
+   * so an activation naming a different peer is refused rather than followed.
+   */
+  public Map<String, Object> activatePairedRelationship(String requestId, String pairId)
+      throws ProductionIdentityException {
+    validateUuid(requestId, "pairing-request-invalid");
+    validateUuid(pairId, "pairing-relationship-invalid");
+
+    return execute(
+        () ->
+            pairingStore.activateRelationship(
+                requireRegisteredConnection(), requestId, pairId, System.currentTimeMillis()));
   }
 
   public Map<String, Object> commitIdentityRegistration(String operationId, String receiptId)
@@ -98,8 +134,28 @@ public final class ProductionIdentityManager {
         });
   }
 
+  /**
+   * Records that the local user compared the safety number and found it correct. This is one of the
+   * two independent confirmations activation requires, so it queues an intent for the peer without
+   * moving the candidate out of {@code accepted}.
+   */
+  public Map<String, Object> confirmPairingSafetyNumber(String requestId)
+      throws ProductionIdentityException {
+    validateUuid(requestId, "pairing-request-invalid");
+
+    return execute(
+        () ->
+            pairingStore.confirmSafetyNumber(
+                requireRegisteredConnection(), requestId, System.currentTimeMillis()));
+  }
+
   public Map<String, Object> inspectProductionIdentity() throws ProductionIdentityException {
     return execute(this::inspectInternal);
+  }
+
+  /** The pairing intents the transport still has to deliver, oldest first. */
+  public Map<String, Object> listPairingOutbox() throws ProductionIdentityException {
+    return execute(() -> pairingStore.listOutbox(requireRegisteredConnection()));
   }
 
   public Map<String, Object> prepareIdentityRegistration(String displayName)
@@ -134,6 +190,22 @@ public final class ProductionIdentityManager {
         });
   }
 
+  /**
+   * Applies the local user's answer to a staged pairing request. {@code expire} is not a nameable
+   * action: aging out belongs to the clock and {@link #sweepPairingState()}.
+   */
+  public Map<String, Object> respondToPairingRequest(String requestId, String action)
+      throws ProductionIdentityException {
+    validateUuid(requestId, "pairing-request-invalid");
+    PairingProtocolRules.CandidateAction resolved =
+        PairingProtocolRules.CandidateAction.fromRequested(action);
+
+    return execute(
+        () ->
+            pairingStore.resolveCandidate(
+                requireRegisteredConnection(), requestId, resolved, System.currentTimeMillis()));
+  }
+
   public Map<String, Object> signDeviceRequest(String canonicalRequest)
       throws ProductionIdentityException {
     if (canonicalRequest == null
@@ -154,6 +226,30 @@ public final class ProductionIdentityManager {
           result.put("signature", deviceSigner.sign(canonicalRequest));
           return Collections.unmodifiableMap(result);
         });
+  }
+
+  /**
+   * Retires pairing state the clock has settled. Callers may run this at any time; it is the only
+   * path that can expire a request, which is why {@code expire} is not an action a caller can name.
+   */
+  public Map<String, Object> sweepPairingState() throws ProductionIdentityException {
+    return execute(
+        () -> pairingStore.sweep(requireRegisteredConnection(), System.currentTimeMillis()));
+  }
+
+  /**
+   * Isolates a peer candidate that has already been opened. Package-private on purpose: opening an
+   * inbound packet needs the libsignal session that arrives with the protocol engine, so publishing
+   * this over the module boundary now would expose a function no caller could supply an argument
+   * for. Instrumentation tests share this package and drive it directly.
+   */
+  Map<String, Object> stagePeerCandidate(
+      PairingTransactionStore.InboundPacket inbound, PairingRecordCodec.PeerCandidate candidate)
+      throws ProductionIdentityException {
+    return execute(
+        () ->
+            pairingStore.stageCandidate(
+                requireRegisteredConnection(), inbound, candidate, System.currentTimeMillis()));
   }
 
   private static Map<String, Object> bundleFromJson(JSONObject json)
@@ -407,6 +503,7 @@ public final class ProductionIdentityManager {
         database.insertOutbox(
             connection,
             operationId,
+            operationId,
             "identity-registration",
             recordCipher.encrypt("outbox", operationId, RECORD_REVISION, bundleBytes),
             now);
@@ -525,6 +622,21 @@ public final class ProductionIdentityManager {
       throw new ProductionIdentityException("identity-missing");
     }
     return identity;
+  }
+
+  /**
+   * The writable connection every pairing action runs on, after proving this device still owns a
+   * server-registered identity backed by live Keystore keys. Pairing before registration has no
+   * peer to reach, so it fails here rather than writing a row nothing can ever deliver.
+   */
+  private SQLiteDatabase requireRegisteredConnection() throws ProductionIdentityException {
+    SQLiteDatabase connection = database.getWritableDatabase();
+    ProductionIdentityDatabase.IdentityProjection identity = requireIdentity(connection);
+    verifyKeyBoundary(connection, identity);
+    if (identity.registeredAtMs() == null) {
+      throw new ProductionIdentityException("identity-registration-incomplete");
+    }
+    return connection;
   }
 
   private static void validateUuid(String value, String safeCode)

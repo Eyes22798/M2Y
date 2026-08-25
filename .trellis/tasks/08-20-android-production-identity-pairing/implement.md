@@ -12,20 +12,34 @@
 ## B. Client domain, configuration and navigation contracts
 
 - [x] Add framework-free identity/pairing types, state machine, commands, results and exhaustive tests.
-- [ ] Add strict public config reader and development-only local server override; preserve HTTPS-only preview/production rules.
-- [ ] Add `IdentityRelationshipProvider` and gate under `SecureWorkspaceGate.ready`; main private screens mount only when relationship is active.
-- [ ] Preserve existing SQLCipher workspace data across the no-identity upgrade path and remove unconditional `/chat` entry behavior.
+- [x] Add strict public config reader and development-only local server override; preserve HTTPS-only preview/production rules.
+- [x] Add `IdentityRelationshipProvider` and gate under `SecureWorkspaceGate.ready`; main private screens mount only when relationship is active.
+- [x] Preserve existing SQLCipher workspace data across the no-identity upgrade path and remove unconditional `/chat` entry behavior.
 - [ ] Add stable error taxonomy shared through explicit client/server fixture files, not duplicated ad hoc strings.
+
+### Deviations recorded while implementing B2–B4
+
+1. **Workspace access is granted while no pairing transport exists.** The literal rule "private screens mount only when the relationship is active" cannot ship on its own yet: `commitIdentityRegistration` requires a server-issued receipt and section D is unimplemented, so a strict gate would trap every install in `registering` and destroy the only working local loop (`Chat → Space`). `src/application/identity/workspace-access.ts` therefore grants access when the public config exposes no usable pairing endpoint — a runtime-verifiable fact, not a build flag — and blocks otherwise. Both branches are implemented and tested (`workspace-access.test.ts`, `IdentityRelationshipGate.test.tsx`), so configuring a real HTTPS endpoint engages blocking with no code change. All three shipped variants use reserved `.invalid` hosts today.
+2. **`WorkspaceProvider` nesting order differs from design §2.** The design places `WorkspaceProvider` after the identity gate; `SecureWorkspaceGate` keeps owning it instead. The session snapshot is already decrypted inside `controller.open()`, so moving the provider inward adds no protection while splitting ownership of the same controller across two gates.
 
 ## C. Gate 2 — Production native identity and transaction store
 
 - [x] Split production native packages/classes/API from all Spike harness code.
 - [x] Implement native SQLite schema/migration, per-secret Keystore AES-GCM record encryption and single executor.
 - [x] Implement one production identity, stable ID, device ID, libsignal prekeys and P-256 device-auth signing key.
-- [ ] Implement working-copy protocol transactions, candidate isolation, pairing inbox/outbox, replay tombstones and active relationship uniqueness.
+- [x] Implement working-copy protocol transactions, candidate isolation, pairing inbox/outbox, replay tombstones and active relationship uniqueness.
 - [x] Add strict Expo Module production DTOs and TypeScript decoders; forbid keys/raw records/native exception strings.
 - [x] Extend unified local reset so SQLCipher, production identity, device-auth key and dev acceptance materials are all cleaned or the app remains fail-closed.
-- [ ] Add JVM/instrumentation tests for restart, corrupt records, missing keys, signing, rollback, replay and cleanup.
+- [x] Add JVM/instrumentation tests for restart, corrupt records, missing keys, signing, rollback, replay and cleanup.
+
+### Deviations and verification gaps recorded while implementing C4/C7
+
+1. **C4 is the persistence protocol only; no packet is opened or produced.** `PairingTransactionStore` commits candidates, decisions, tombstones, the outbox and the single active relationship, and decides everything through the JVM-tested `PairingProtocolRules`. Real packet encrypt/decrypt, the libsignal session store over `secret_records` and safety-number generation stay in sections D/E: they need a server-leased peer bundle that cannot be exercised anywhere today, so `pairing_candidates.safety_display_ciphertext` is still written as NULL and no safety number crosses any boundary yet.
+2. **`stagePeerCandidate` is package-private and has no production caller.** Staging an inbound candidate is the one pairing action that requires an already-decrypted peer packet, so exposing it over the module boundary before the protocol engine exists would let a caller inject an unauthenticated peer identity. It is exercised only by the instrumentation suite; `M2YCryptoModule.kt` deliberately exposes the other six calls and not this one.
+3. **The outbox acknowledgement receipt is validated but not stored.** Schema v1 has no column for it, and adding one would need a migration whose `onUpgrade` currently throws. `ackPairingOutbox` therefore treats the receipt as proof of delivery (format-checked, `pairing-outbox-receipt-invalid` otherwise) rather than a persisted fact — the same choice `commitIdentityRegistration` already makes.
+4. **Exactly-once intents rest on outbox rows, not on a unique index.** `pairing_outbox` has no unique constraint on `(request_id, packet_type)`; `committedIntentId` enforces it inside the same transaction and matches acknowledged rows too, so repeating a decision after its packet was delivered returns the first operation id instead of queueing a second packet. Both outbox queries order by `created_at_ms ASC, rowid ASC` so the transport gets a real insertion order even for rows written in the same millisecond.
+5. **The pairing instrumentation tests have never been executed.** `PairingTransactionStoreInstrumentedTest` (12 tests) compiles and packages — `:m2y-crypto:assembleDebugAndroidTest` succeeds — but no emulator image or physical device is installed in this environment, so nothing has run them. The JVM half is genuinely green (`pnpm test:native:crypto`: 6 suites / 51 tests). Executing the instrumentation suite is G6's line item and must not be reported as done before then.
+6. **The six new pairing calls stop at the native adapter, with no application-layer port.** `M2YCryptoProductionAdapter` decodes them through `M2YCryptoPairingContract`, but no `ProductionIdentityPort` method is added: nothing in `src/application` can act on a pairing decision until the `PairingApiClient` of section E exists to deliver the queued packets. This follows the existing precedent for `commitIdentityRegistration` and `signDeviceRequest`, which are also adapter-only for the same reason.
 
 ## D. Pairing service API and signed transport
 

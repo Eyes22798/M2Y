@@ -5,6 +5,8 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
+import java.util.ArrayList;
+import java.util.List;
 
 final class ProductionIdentityDatabase extends SQLiteOpenHelper {
   static final String DATABASE_NAME = "m2y-production-identity-v1.db";
@@ -225,12 +227,13 @@ final class ProductionIdentityDatabase extends SQLiteOpenHelper {
   void insertOutbox(
       SQLiteDatabase database,
       String operationId,
+      String requestId,
       String packetType,
       byte[] ciphertext,
       long nowMs) {
     ContentValues values = new ContentValues();
     values.put("operation_id", operationId);
-    values.put("request_id", operationId);
+    values.put("request_id", requestId);
     values.put("packet_type", packetType);
     values.put("ciphertext", ciphertext);
     values.put("created_at_ms", nowMs);
@@ -289,7 +292,340 @@ final class ProductionIdentityDatabase extends SQLiteOpenHelper {
       Long registeredAtMs,
       long revision) {}
 
+  void insertCandidate(
+      SQLiteDatabase database,
+      String requestId,
+      String peerRouteId,
+      String status,
+      byte[] candidateCiphertext,
+      long expiresAtMs,
+      long revision) {
+    ContentValues values = new ContentValues();
+    values.put("request_id", requestId);
+    values.put("peer_route_id", peerRouteId);
+    values.put("status", status);
+    values.put("candidate_ciphertext", candidateCiphertext);
+    values.putNull("safety_display_ciphertext");
+    values.put("expires_at_ms", expiresAtMs);
+    values.put("revision", revision);
+    database.insertOrThrow("pairing_candidates", null, values);
+  }
+
+  CandidateRow loadCandidate(SQLiteDatabase database, String requestId) {
+    try (Cursor cursor =
+        database.query(
+            "pairing_candidates",
+            new String[] {
+              "peer_route_id", "status", "candidate_ciphertext", "expires_at_ms", "revision"
+            },
+            "request_id = ?",
+            new String[] {requestId},
+            null,
+            null,
+            null)) {
+      if (!cursor.moveToFirst()) {
+        return null;
+      }
+      return new CandidateRow(
+          requestId,
+          cursor.getString(0),
+          cursor.getString(1),
+          cursor.getBlob(2),
+          cursor.getLong(3),
+          cursor.getLong(4));
+    }
+  }
+  void updateCandidateStatus(
+      SQLiteDatabase database, String requestId, String status, long revision) {
+    ContentValues values = new ContentValues();
+    values.put("status", status);
+    values.put("revision", revision);
+    if (database.update("pairing_candidates", values, "request_id = ?", new String[] {requestId})
+        != 1) {
+      throw new IllegalStateException("pairing-candidate-update-failed");
+    }
+  }
+
+  /**
+   * Candidates whose window has closed while they were still answerable. A resolved candidate is
+   * left alone: its outcome already produced a tombstone and must not be rewritten as expiry.
+   */
+  List<CandidateRow> answerableExpiredCandidates(SQLiteDatabase database, long nowMs) {
+    List<CandidateRow> rows = new ArrayList<>();
+    try (Cursor cursor =
+        database.query(
+            "pairing_candidates",
+            new String[] {
+              "request_id", "peer_route_id", "status", "expires_at_ms", "revision"
+            },
+            "expires_at_ms <= ? AND status IN (?, ?)",
+            new String[] {
+              Long.toString(nowMs),
+              PairingProtocolRules.CandidateStatus.PENDING_LOCAL_REVIEW.stored(),
+              PairingProtocolRules.CandidateStatus.ACCEPTED.stored()
+            },
+            null,
+            null,
+            "expires_at_ms ASC")) {
+      while (cursor.moveToNext()) {
+        rows.add(
+            new CandidateRow(
+                cursor.getString(0),
+                cursor.getString(1),
+                cursor.getString(2),
+                null,
+                cursor.getLong(3),
+                cursor.getLong(4)));
+      }
+    }
+    return rows;
+  }
+  RelationshipRow loadRelationship(SQLiteDatabase database) {
+    try (Cursor cursor =
+        database.query(
+            "relationship",
+            new String[] {
+              "pair_id", "peer_route_id", "state", "peer_summary_ciphertext", "verified_at_ms",
+              "revision"
+            },
+            "singleton_id = 1",
+            null,
+            null,
+            null,
+            null)) {
+      if (!cursor.moveToFirst()) {
+        return null;
+      }
+      return new RelationshipRow(
+          cursor.getString(0),
+          cursor.getString(1),
+          cursor.getString(2),
+          cursor.getBlob(3),
+          cursor.isNull(4) ? null : cursor.getLong(4),
+          cursor.getLong(5));
+    }
+  }
+
+  /**
+   * The singleton primary key is what makes a second relationship impossible at the storage layer,
+   * so this insert is allowed to be unconditional: a conflicting activation has already been refused
+   * by the protocol rules, and anything that reaches here and still conflicts must fail loudly.
+   */
+  void insertRelationship(
+      SQLiteDatabase database,
+      String pairId,
+      String peerRouteId,
+      String state,
+      byte[] peerSummaryCiphertext,
+      long verifiedAtMs,
+      long revision) {
+    ContentValues values = new ContentValues();
+    values.put("singleton_id", 1);
+    values.put("pair_id", pairId);
+    values.put("peer_route_id", peerRouteId);
+    values.put("state", state);
+    values.put("peer_summary_ciphertext", peerSummaryCiphertext);
+    values.put("verified_at_ms", verifiedAtMs);
+    values.put("revision", revision);
+    database.insertOrThrow("relationship", null, values);
+  }
+  boolean hasInboxFingerprint(SQLiteDatabase database, String requestId, String packetHash) {
+    try (Cursor cursor =
+        database.query(
+            "pairing_inbox",
+            new String[] {"event_id"},
+            "request_id = ? AND packet_hash = ?",
+            new String[] {requestId, packetHash},
+            null,
+            null,
+            null)) {
+      return cursor.moveToFirst();
+    }
+  }
+
+  String inboxPacketHash(SQLiteDatabase database, String requestId) {
+    try (Cursor cursor =
+        database.query(
+            "pairing_inbox",
+            new String[] {"packet_hash"},
+            "request_id = ?",
+            new String[] {requestId},
+            null,
+            null,
+            "applied_at_ms ASC",
+            "1")) {
+      return cursor.moveToFirst() ? cursor.getString(0) : null;
+    }
+  }
+
+  void insertInbox(
+      SQLiteDatabase database,
+      String eventId,
+      String requestId,
+      String packetHash,
+      long appliedAtMs) {
+    ContentValues values = new ContentValues();
+    values.put("event_id", eventId);
+    values.put("request_id", requestId);
+    values.put("packet_hash", packetHash);
+    values.put("applied_at_ms", appliedAtMs);
+    database.insertOrThrow("pairing_inbox", null, values);
+  }
+  String tombstoneOutcome(SQLiteDatabase database, String requestId) {
+    try (Cursor cursor =
+        database.query(
+            "replay_tombstones",
+            new String[] {"outcome"},
+            "request_id = ?",
+            new String[] {requestId},
+            null,
+            null,
+            "expires_at_ms DESC",
+            "1")) {
+      return cursor.moveToFirst() ? cursor.getString(0) : null;
+    }
+  }
+
+  /**
+   * Tombstones are written with conflict-ignore so that repeating a resolution is idempotent. The
+   * outcome of the first refusal is the one that stands; a later write cannot soften it.
+   */
+  void insertTombstone(
+      SQLiteDatabase database,
+      String requestId,
+      String packetHash,
+      String outcome,
+      long expiresAtMs) {
+    ContentValues values = new ContentValues();
+    values.put("request_id", requestId);
+    values.put("packet_hash", packetHash);
+    values.put("outcome", outcome);
+    values.put("expires_at_ms", expiresAtMs);
+    database.insertWithOnConflict(
+        "replay_tombstones", null, values, SQLiteDatabase.CONFLICT_IGNORE);
+  }
+
+  /**
+   * The operation id already committed for this request and packet type, in any acknowledgement
+   * state, or {@code null} when the decision has never been queued. Acknowledged rows count on
+   * purpose: an outbox row is the durable record that a decision was already handed to the
+   * transport, so reusing it is what keeps a repeated local decision from queueing a second packet.
+   */
+  String committedIntentId(SQLiteDatabase database, String requestId, String packetType) {
+    try (Cursor cursor =
+        database.query(
+            "pairing_outbox",
+            new String[] {"operation_id"},
+            "request_id = ? AND packet_type = ?",
+            new String[] {requestId, packetType},
+            null,
+            null,
+            "created_at_ms ASC, rowid ASC",
+            "1")) {
+      return cursor.moveToFirst() ? cursor.getString(0) : null;
+    }
+  }
+
+  /**
+   * Pending transport work other than identity registration, which has its own dedicated call and a
+   * different payload shape.
+   */
+  List<OutboxRow> pendingPairingIntents(SQLiteDatabase database) {
+    List<OutboxRow> rows = new ArrayList<>();
+    try (Cursor cursor =
+        database.query(
+            "pairing_outbox",
+            new String[] {
+              "operation_id", "request_id", "packet_type", "ciphertext", "created_at_ms",
+              "retry_count"
+            },
+            "acknowledged_at_ms IS NULL AND packet_type <> ?",
+            new String[] {"identity-registration"},
+            null,
+            null,
+            "created_at_ms ASC, rowid ASC")) {
+      while (cursor.moveToNext()) {
+        rows.add(
+            new OutboxRow(
+                cursor.getString(0),
+                cursor.getString(1),
+                cursor.getString(2),
+                cursor.getBlob(3),
+                cursor.getLong(4),
+                cursor.getLong(5)));
+      }
+    }
+    return rows;
+  }
+
+  boolean outboxExists(SQLiteDatabase database, String operationId) {
+    try (Cursor cursor =
+        database.query(
+            "pairing_outbox",
+            new String[] {"operation_id"},
+            "operation_id = ?",
+            new String[] {operationId},
+            null,
+            null,
+            null)) {
+      return cursor.moveToFirst();
+    }
+  }
+
+  /** Returns whether this call was the one that acknowledged the item. */
+  boolean acknowledgeOutboxIfPending(SQLiteDatabase database, String operationId, long nowMs) {
+    ContentValues values = new ContentValues();
+    values.put("acknowledged_at_ms", nowMs);
+    return database.update(
+            "pairing_outbox",
+            values,
+            "operation_id = ? AND acknowledged_at_ms IS NULL",
+            new String[] {operationId})
+        == 1;
+  }
+
+  int deleteExpiredTombstones(SQLiteDatabase database, long nowMs) {
+    return database.delete(
+        "replay_tombstones", "expires_at_ms <= ?", new String[] {Long.toString(nowMs)});
+  }
+
+  /**
+   * Removes inbox markers for requests that no longer have a candidate or a tombstone. While either
+   * exists the marker is still doing work; once neither does, there is nothing left for a replayed
+   * packet to corrupt.
+   */
+  int deleteOrphanInboxMarkers(SQLiteDatabase database) {
+    return database.delete(
+        "pairing_inbox",
+        "request_id NOT IN (SELECT request_id FROM pairing_candidates) "
+            + "AND request_id NOT IN (SELECT request_id FROM replay_tombstones)",
+        null);
+  }
+  record CandidateRow(
+      String requestId,
+      String peerRouteId,
+      String status,
+      byte[] candidateCiphertext,
+      long expiresAtMs,
+      long revision) {}
+
+  record OutboxRow(
+      String operationId,
+      String requestId,
+      String packetType,
+      byte[] ciphertext,
+      long createdAtMs,
+      long retryCount) {}
+
   record PendingOutbox(String operationId, byte[] ciphertext) {}
+
+  record RelationshipRow(
+      String pairId,
+      String peerRouteId,
+      String state,
+      byte[] peerSummaryCiphertext,
+      Long verifiedAtMs,
+      long revision) {}
 
   record SecretRecord(byte[] ciphertext, long revision) {}
 }

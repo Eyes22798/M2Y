@@ -2,6 +2,7 @@ import {
   hasExactNativeKeys,
   invalidNativeResponse,
   isBoundedString,
+  isEpochMs,
   isNativeRecord,
   isPositiveSafeInteger,
   isUuidV4,
@@ -86,10 +87,6 @@ function isBase64Url(
   maximumLength: number,
 ): value is string {
   return isBoundedString(value, minimumLength, maximumLength) && BASE64_URL_PATTERN.test(value);
-}
-
-function isEpochMs(value: unknown): value is number {
-  return Number.isSafeInteger(value) && (value as number) >= 1_577_836_800_000;
 }
 
 function hasIdentitySummary(value: NativeRecord): boolean {

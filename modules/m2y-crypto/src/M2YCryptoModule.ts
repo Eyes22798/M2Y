@@ -54,3 +54,27 @@ export function signDeviceRequest(canonicalRequest: string): Promise<unknown> {
 export function resetProductionIdentity(): Promise<unknown> {
   return nativeModule.resetProductionIdentity();
 }
+
+export function respondToPairingRequest(requestId: string, action: string): Promise<unknown> {
+  return nativeModule.respondToPairingRequest(requestId, action);
+}
+
+export function confirmPairingSafetyNumber(requestId: string): Promise<unknown> {
+  return nativeModule.confirmPairingSafetyNumber(requestId);
+}
+
+export function activatePairedRelationship(requestId: string, pairId: string): Promise<unknown> {
+  return nativeModule.activatePairedRelationship(requestId, pairId);
+}
+
+export function listPairingOutbox(): Promise<unknown> {
+  return nativeModule.listPairingOutbox();
+}
+
+export function ackPairingOutbox(operationId: string, receiptId: string): Promise<unknown> {
+  return nativeModule.ackPairingOutbox(operationId, receiptId);
+}
+
+export function sweepPairingState(): Promise<unknown> {
+  return nativeModule.sweepPairingState();
+}

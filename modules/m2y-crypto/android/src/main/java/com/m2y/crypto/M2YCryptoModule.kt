@@ -84,6 +84,30 @@ class M2YCryptoModule : Module() {
         runProduction { it.signDeviceRequest(canonicalRequest) }
       }
 
+      AsyncFunction("respondToPairingRequest") { requestId: String, action: String ->
+        runProduction { it.respondToPairingRequest(requestId, action) }
+      }
+
+      AsyncFunction("confirmPairingSafetyNumber") { requestId: String ->
+        runProduction { it.confirmPairingSafetyNumber(requestId) }
+      }
+
+      AsyncFunction("activatePairedRelationship") { requestId: String, pairId: String ->
+        runProduction { it.activatePairedRelationship(requestId, pairId) }
+      }
+
+      AsyncFunction("listPairingOutbox") {
+        runProduction { it.listPairingOutbox() }
+      }
+
+      AsyncFunction("ackPairingOutbox") { operationId: String, receiptId: String ->
+        runProduction { it.ackPairingOutbox(operationId, receiptId) }
+      }
+
+      AsyncFunction("sweepPairingState") {
+        runProduction { it.sweepPairingState() }
+      }
+
       AsyncFunction("resetProductionIdentity") {
         try {
           productionIdentityManager().resetProductionIdentity()

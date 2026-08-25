@@ -34,6 +34,22 @@ export function isPositiveSafeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) > 0;
 }
 
+/**
+ * For counters a native sweep or retry loop legitimately reports as zero. Kept separate from
+ * `isPositiveSafeInteger` so an identifier or revision that arrives as `0` still fails closed.
+ */
+export function isNonNegativeSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+/**
+ * Rejects timestamps before 2020-01-01, which is earlier than this product existed: a native row
+ * dated before then is corrupt or came from a device clock that cannot be trusted for ordering.
+ */
+export function isEpochMs(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 1_577_836_800_000;
+}
+
 export function invalidNativeResponse(): never {
   throw new Error('m2y-crypto-invalid-native-response');
 }
