@@ -24,7 +24,7 @@ Chat → Save to Space → 协作（执行/编辑/等待/确认）→ 状态回�
 ```
 
 - 全局只有一个双人关系（Pair），没有聊天列表、群聊与社交功能。
-- **Shared Item** 是 Space 的统一对象：`pin`（收藏）/ `task`（待办）/ `note`（笔记）/ `file`（文件）/ `agreement`（约定）；类型只是筛选，不是五套独立导航。
+- **Shared Item** 是 Space 的统一对象。PRD 目标类型是 `pin`（收藏）/ `task`（待办）/ `note`（笔记）/ `file`（文件）/ `agreement`（约定）；类型只是筛选，不是五套独立导航。**但代码只实现了 3 种**：`src/data/sqlite/schema-v1.ts:20` 的 `CHECK(kind IN ('note','task','agreement'))` 和 `previewSharedItemKinds` 才是唯一可写可读的集合（写入 `SaveToSpaceSheet`、读出 `row-decoders.ts:78` 都按它校验）。`src/domain/shared-item/types.ts:1` 的 `sharedItemKinds` 另外声明了 `file` 与 `event`、且没有 `pin`——这两个值类型上合法、写库必被 CHECK 拒绝。新增类型必须同时改 schema + migration + 该常量，只改类型联合不会生效。
 - Task 状态机：`open → doing → waiting → done`；进入 `waiting` 必须指明 `waitingFor`（我/对方/双方）。
 - Agreement 是"双方确认同一内容版本"：`draft → pending_confirmation → confirmed`（或 `changes_requested`）；任何正文修改生成新版本并重新等待双方确认，确认绑定 `agreementId + version`。
 - File 不是独立网盘，而是聊天文件自动建立的索引视图；Chat 消息与 Space File Item 引用同一个 `assetId`，不重复上传。
