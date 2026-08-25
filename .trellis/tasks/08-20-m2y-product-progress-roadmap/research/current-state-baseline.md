@@ -1,5 +1,10 @@
 # Current state baseline — 2026-08-20
 
+> **Superseded as a scheduling input.** This document was written at `HEAD = 1e8c6bf` and is 4 commits
+> behind (`38cf657`, `d82644f` are functional commits it does not cover). Use
+> `2026-08-21-full-audit.md` for scheduling decisions; keep this file as the historical record of how
+> the 33% baseline was derived.
+
 ## Repository state used for this baseline
 
 - `52ac76e feat: validate Android native E2EE spike`

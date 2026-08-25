@@ -97,20 +97,25 @@
 
 ## Acceptance Criteria
 
-- [ ] 根目录成为 Git 仓库；main 保留现有资料基线，骨架改动位于 `chore/m2y-skeleton`；原有文档、AI 规则与 `.trellis/` 均未被覆盖或丢失；无未处理的模板路径冲突。
-- [ ] `package.json` 锁定 Expo SDK 56 / RN 0.85 / React 19.2 兼容矩阵、pnpm 10.33.0 和 Node 24；`pnpm-lock.yaml` 存在。
-- [ ] `pnpm typecheck`、`pnpm lint`、`pnpm format:check`、`pnpm deps:check`、`pnpm test --ci` 全部通过。
-- [ ] 三个环境的 `android.package` 与 `ios.bundleIdentifier` 均互不相同；自动 config check 通过；`expo-screen-capture` 不出现在 plugin 列表。
-- [ ] `eas.json` 包含 development、preview、production，development profile 启用 Development Client。
-- [ ] 根布局实际挂载 `GestureHandlerRootView` 与 `KeyboardProvider`；依赖中同时存在 SDK 56 兼容的 Reanimated 和 Worklets。
-- [ ] `(auth)`、`(main)`、`+not-found` 路由存在，模板 demo 已清除，Android export/route smoke 通过。
-- [ ] `src/` 分层、目录 README、`modules/m2y-crypto/` 和 `server/` 占位符合 §16，自动依赖边界检查通过。
-- [ ] FlashList 基准页能生成并渲染 10,000 条确定性混合消息，具备输入框且不在 production 正常导航中暴露。
-- [ ] `pnpm exec expo-doctor` 无错误；Android `prebuild --clean` 成功。
-- [ ] Android Development Build 的 Gradle debug 编译成功并产生 APK；README 明确标记 Android 运行与 iOS 构建的待验收状态。
-- [ ] CI workflow 覆盖 R9 的全部自动门禁；migration gate 明确标注由 Spike C 启用。
-- [ ] 仓库 README 记录环境准备、开发命令、三环境、Development Build、基准页入口、M0 Spike 顺序和当前未验证事项。
-- [ ] 完整 `trellis-check` 通过后，才按 Phase 3.4 向用户提交一次批量 commit 方案；用户确认前不创建工作提交。
+> **回写说明（2026-08-21）**：本任务归档时 14 条 AC 全部未勾选，属于归档流程漏回写，不是验收失败。
+> 以下勾选依据 2026-08-21 在 `HEAD = d82644f` 上的实跑与代码核查（见
+> `.trellis/tasks/08-20-m2y-product-progress-roadmap/research/2026-08-21-full-audit.md`）。凡当时未做、
+> 至今仍未做的事项一律不勾，并在条目内写明。
+
+- [x] 根目录成为 Git 仓库；main 保留现有资料基线，骨架改动位于 `chore/m2y-skeleton`；原有文档、AI 规则与 `.trellis/` 均未被覆盖或丢失；无未处理的模板路径冲突。<br>*核查*：首提交 `1a7e551 docs: 建立 M2Y 产品资料与 Trellis 基线` 在骨架提交 `88153af` 之前，资料基线与 `.trellis/` 保留完整。`chore/m2y-skeleton` 分支已合并删除，分支名本身无法从历史复核，其余条件均成立。
+- [x] `package.json` 锁定 Expo SDK 56 / RN 0.85 / React 19.2 兼容矩阵、pnpm 10.33.0 和 Node 24；`pnpm-lock.yaml` 存在。<br>*核查*：`expo ~56.0.20` / `react-native 0.85.3` / `react 19.2.3`、`packageManager: pnpm@10.33.0`、`engines.node >=24 <25`、lockfile 存在。
+- [x] `pnpm typecheck`、`pnpm lint`、`pnpm format:check`、`pnpm deps:check`、`pnpm test --ci` 全部通过。<br>*核查*：五项实跑全绿；`test --ci` = 19 套件 / 75 用例；`deps:check` = 95 modules / 148 dependencies 零违规。
+- [x] 三个环境的 `android.package` 与 `ios.bundleIdentifier` 均互不相同；自动 config check 通过；`expo-screen-capture` 不出现在 plugin 列表。<br>*核查*：`pnpm config:check` 通过（development / preview / production）；`app.config.ts` plugin 列表无 `expo-screen-capture`。
+- [x] `eas.json` 包含 development、preview、production，development profile 启用 Development Client。<br>*核查*：三个 profile 均存在，`build.development.developmentClient = true`。
+- [x] 根布局实际挂载 `GestureHandlerRootView` 与 `KeyboardProvider`；依赖中同时存在 SDK 56 兼容的 Reanimated 和 Worklets。<br>*核查*：`src/bootstrap/AppProviders.tsx:15,16` 实际挂载；依赖含 `react-native-reanimated 4.3.1` 与 `react-native-worklets 0.8.3`。
+- [x] `(auth)`、`(main)`、`+not-found` 路由存在，模板 demo 已清除，Android export/route smoke 通过。<br>*核查*：三组路由存在；`APP_VARIANT=development pnpm exec expo export --platform android` 实跑成功（Android bundle 4.4MB + 27 assets）。注意 `(auth)` 三个路由在运行时仍不可达（`app/index.tsx` 无条件跳 `/chat`），这属于后续配对任务范围，不影响本条。
+- [x] `src/` 分层、目录 README、`modules/m2y-crypto/` 和 `server/` 占位符合 §16，自动依赖边界检查通过。<br>*核查*：12 个分层 README 均被 git 跟踪；`pnpm deps:check` 零违规。
+- [x] FlashList 基准页能生成并渲染 10,000 条确定性混合消息，具备输入框且不在 production 正常导航中暴露。<br>*核查*：`src/testing/benchmarks/{FlashListBenchmarkScreen.tsx,messages.ts,messages.test.ts}`，dev-only 入口。
+- [x] `pnpm exec expo-doctor` 无错误；Android `prebuild --clean` 成功。<br>*核查*：`expo-doctor` 实跑 21/21 通过。`prebuild --clean` 未在本轮重跑（破坏性，会重建 `android/`），依据是 CI 中该步骤存在且当时验收通过；`android/` 不在 git 跟踪。
+- [ ] Android Development Build 的 Gradle debug 编译成功并产生 APK；README 明确标记 Android 运行与 iOS 构建的待验收状态。<br>*未关闭*：APK 侧成立（Windows 上编译出 98,531,990 bytes，SHA-256 `CF70C730F2D7045ADABE447CDB8CB3B334B1F329F397A4BE88CECD4C44395900`），但**本任务自身要求的 Android 安装启动 smoke 与 iOS 构建至今未做**。后续任务在 realme RMX3888 上取得的真机证据属于 Spike D 与安全数据基础任务，不回溯覆盖本条；iOS 侧至今零实现（`ios/` 不存在，`createAppRuntime.ts:26` 写死 `platformSupported: Platform.OS === 'android'`）。README「当前验收边界」已按实际状态改写。
+- [ ] CI workflow 覆盖 R9 的全部自动门禁；migration gate 明确标注由 Spike C 启用。<br>*未关闭且已被取代*：归档时该「标注」以注释形式存在，本条按字面可算达成；但 2026-08-21 审计发现 CI 的 server 单测自 `38cf657` 起因 `pnpm server:test -- --ci` 的多余 `--` 必然失败，`server:build` 从未在 CI 执行——「CI 覆盖全部自动门禁」这一结论不再成立。修复后注释已被真实的 migration 门禁步骤（`pnpm test:migrations`、`pnpm --filter @m2y/server test:migrations`）替换，本条不再适用，由新的门禁清单接管。
+- [x] 仓库 README 记录环境准备、开发命令、三环境、Development Build、基准页入口、M0 Spike 顺序和当前未验证事项。<br>*核查*：均在 README 中；M0 Spike 编号已于 2026-08-21 从五项统一到四项，与 `CLAUDE.md` 一致。
+- [x] 完整 `trellis-check` 通过后，才按 Phase 3.4 向用户提交一次批量 commit 方案；用户确认前不创建工作提交。<br>*核查*：骨架落在 `88153af` / `a95b1fc` 两笔提交后归档，无提前的工作提交。
 
 ## Out of Scope
 

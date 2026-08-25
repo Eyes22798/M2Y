@@ -1,6 +1,6 @@
 # M2Y
 
-M2Y 是两个人的私密协作空间，聊天是入口。当前仓库是 M0 客户端工程骨架：它建立可编译、可测试、可做原生 Spike 的 React Native 基线，但不伪装 E2EE、同步、数据库或生产服务已经完成。
+M2Y 是两个人的私密协作空间，聊天是入口。当前仓库处于 M0/M1 早期：本地 SQLCipher 真加密库、Android 生产身份原生模块与最小 NestJS 服务端（仅 `GET /health`）已落地，但**密文同步、配对全链路与 iOS 均为零**，本文件不宣称它们已完成。逐项完成度见 `.trellis/tasks/08-20-m2y-product-progress-roadmap/research/2026-08-21-full-audit.md`。
 
 ## 技术基线
 
@@ -8,7 +8,7 @@ M2Y 是两个人的私密协作空间，聊天是入口。当前仓库是 M0 客
 - Expo Router；根级 Gesture Handler、Keyboard Controller 与 Safe Area Provider
 - Reanimated 4 + Worklets，统一 motion token，并尊重系统 Reduce Motion
 - FlashList 2；开发环境包含 10,000 条确定性混合消息基准页
-- SQLite 配置启用 FTS 与 SQLCipher；Secure Store、Local Authentication 和 Screen Capture 只建立正确原生边界
+- SQLite 已启用 SQLCipher raw-key 真加密与 schema v1 迁移；`enableFTS` 已开但尚未建任何虚拟表。Secure Store 承担密钥包装（含强生物识别模式）；Local Authentication 与 Screen Capture 目前只是依赖与原生边界，TS 侧零引用
 - pnpm 10.33.0、Node 24、Jest、React Native Testing Library、ESLint、Prettier、dependency-cruiser
 
 项目级 `.npmrc` 使用 pnpm hoisted 布局。这是 Windows/CMake 的必要约束：React Native 的 Prefab 目录很深，pnpm 默认隔离布局会让部分路径接近 250 字符，Android SDK 自带的 Ninja 可能把实际存在的文件误判为缺失。
@@ -44,7 +44,7 @@ $env:GRADLE_DISTRIBUTION_URL='https://mirrors.cloud.tencent.com/gradle/gradle-9.
 pnpm build:android:debug:arm64
 ```
 
-Windows 可以生成和编译 Android；iOS 原生编译仍需 macOS/Xcode 或 EAS Build。本任务不宣称 iOS 已通过编译。
+Windows 可以生成和编译 Android。iOS 至今零实现（见「当前验收边界」），仓库不宣称 iOS 已通过编译。
 
 ## 三环境
 
@@ -60,14 +60,34 @@ Windows 可以生成和编译 Android；iOS 原生编译仍需 macOS/Xcode 或 E
 
 ```powershell
 pnpm format:check
+pnpm exec expo customize tsconfig.json   # 必须在 typecheck 之前
 pnpm typecheck
 pnpm lint
 pnpm deps:check
 pnpm test --ci
+pnpm test:migrations --ci
 pnpm config:check
 pnpm exec expo-doctor
 pnpm exec expo export --platform android
+
+pnpm server:format:check
+pnpm server:typecheck
+pnpm server:lint
+pnpm --filter @m2y/server test --ci
+pnpm --filter @m2y/server test:migrations --ci
+pnpm server:build
 ```
+
+原生侧只有一项自动门禁，需要 JDK 21（`JAVA_HOME`）+ JDK 17（`M2Y_JAVA_17_HOME`）与已生成的 `android/`：
+
+```powershell
+pnpm exec expo prebuild --clean --no-install --platform android
+pnpm test:native:crypto    # → :m2y-crypto:testDebugUnitTest，纯 JVM，不需要真机
+```
+
+`expo customize tsconfig.json` 会重新生成被 gitignore 的 `.expo/types/router.d.ts`。缺少该文件时 expo-router 的 `Href` 退化成宽松类型，typecheck 会静默跳过路由校验——所以它必须排在 `pnpm typecheck` 之前，而不是靠 `expo export` 事后补。
+
+给 `pnpm --filter` 或 `pnpm <script>` 传 jest 参数时**不要加 `--` 分隔符**：`pnpm server:test -- --ci` 会让 jest 把 `--ci` 当成 testPathPattern，匹配 0 个用例并以 1 退出。
 
 dependency-cruiser 自动保护以下边界：
 
@@ -85,8 +105,8 @@ dependency-cruiser 自动保护以下边界：
 - `src/data/`、`src/sync/`、`src/native/`：外层实现边界
 - `src/design/`：token、primitive 和 motion pattern
 - `src/testing/benchmarks/`：10K FlashList 基准 fixture 与页面
-- `modules/m2y-crypto/`：未来审计原生加密模块边界
-- `server/`：未来密文中继服务边界；M0 不创建空 NestJS 项目
+- `modules/m2y-crypto/`：原生加密模块（Android 已有 libsignal 生产身份实现，iOS 未实现）
+- `server/`：NestJS 密文中继服务；当前只有 `GET /health`、`RedactedLogger` 与身份/配对 schema，无 envelope/cursor/asset 表
 
 ## 10K 消息基准
 
@@ -94,15 +114,18 @@ dependency-cruiser 自动保护以下边界：
 
 当前任务只验证渲染/编译入口。Release FPS、内存、图片尺寸变化、跳帧与倒序加载策略由 Spike B 在真机上量化；production 正常导航不显示该入口。
 
-## M0 后续 Spike 顺序
+## M0 Spike 顺序
 
-1. A：威胁模型、密钥生命周期与本地身份边界
+编号与 `CLAUDE.md` 统一为四项（此前 README 使用的五项编号已废弃：原 A「威胁模型」属 M0 退出条件而非 Spike，原 E「密文同步」是下表 C 的后半边）。
+
+1. A：动画与手势基准——真机 FPS、跳帧、手势冲突与 Reduce Motion
 2. B：真机聊天列表、键盘、图片与动画性能
-3. C：SQLite/SQLCipher schema、迁移、FTS 与备份恢复
-4. D：原生加密模块、协议互操作与审计策略
-5. E：密文同步、outbox/inbox、冲突与服务端不可解密验证
+3. C：SQLite/SQLCipher schema、迁移、FTS、备份恢复 **+ 密文同步 outbox/inbox/cursor 与服务端不可解密验证**
+4. D：原生加密模块、协议互操作与审计策略（iOS 与 Android 双平台）
 
-数据库 migration 测试会在 Spike C 创建首个 schema 后成为 CI 必选项；当前不保留永远成功的空测试。
+C 含同步半边，因此「Spike C 已完成」不是有效表述：SQLCipher 侧已完成并有真机证据，同步侧尚未开始。
+
+数据库 migration 测试已成为 CI 显式门禁（`pnpm test:migrations`、`pnpm server:test:migrations`）。
 
 ## 隐私与安全约束
 
@@ -114,7 +137,9 @@ dependency-cruiser 自动保护以下边界：
 
 ## 当前验收边界
 
-- Android JavaScript bundle、类型、Lint、依赖边界、测试、三环境和 Expo Doctor 已自动验证
+- JS/TS 层已自动验证：格式、类型、Lint、依赖边界、单测（客户端 19 套件 / 75 用例，服务端 4 套件 / 10 用例）、migration 门禁、三环境 public config、Expo Doctor
 - Android arm64 Development Build 已在 Windows 完整编译，APK 为 98,531,990 bytes，SHA-256 为 `CF70C730F2D7045ADABE447CDB8CB3B334B1F329F397A4BE88CECD4C44395900`
-- 当前没有连接的 Android 设备/模拟器，因此安装启动 smoke 尚待真机或模拟器
-- iOS 编译尚待 macOS/EAS
+- 真机证据已存在：realme RMX3888（Android API 36、arm64）完成 SQLCipher/Keystore 强生物识别序列与 libsignal Spike 七步验收；Chat 键盘与发送在 API 37.1 x86_64 模拟器验收
+- 仍未做：release 真机性能量化（FPS/内存/跳帧）、双安装端到端配对、E2E 框架（Detox/Maestro 未二选一）、独立安全审计
+- `modules/m2y-crypto` 的 JVM 单测（3 个测试类 / 8 个 `@Test`，不需要真机）已进入 CI 的独立 `native-crypto` job，但该 job **尚未经过首轮 CI 验证**：本机没有 JDK 与 Android SDK，只在本地验证了 Gradle wrapper 的调用参数。原生编译（`:app:assembleDebug`）与 instrumentation 测试仍**没有进入 CI**，只在人工流程中执行
+- iOS 为零覆盖且被代码硬性阻断：`ios/` 不存在、`modules/m2y-crypto` 无 iOS 实现、`createAppRuntime.ts` 写死 `platformSupported: Platform.OS === 'android'`。PRD 把 iOS 列为 P0，该缺口需要显式决策而不是顺延
