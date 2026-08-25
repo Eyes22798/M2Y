@@ -13,6 +13,7 @@ describe('DatabaseService', () => {
   const config: ServerConfig = Object.freeze({
     databasePath,
     host: '127.0.0.1',
+    inviteHashKey: Buffer.alloc(32, 0x54),
     port: 3100,
   });
 
@@ -65,6 +66,26 @@ describe('DatabaseService', () => {
         ),
     ).toThrow();
 
+    database.onApplicationShutdown();
+  });
+
+  it('keeps private identity, plaintext content and safety values out of the server schema', () => {
+    const database = new DatabaseService({ ...config, databasePath: ':memory:' });
+    database.onModuleInit();
+
+    const schema = database.connection
+      .prepare(
+        `SELECT name, sql
+         FROM sqlite_schema
+         WHERE type IN ('table', 'index') AND sql IS NOT NULL
+         ORDER BY name`,
+      )
+      .all() as { name: string; sql: string }[];
+    const serializedSchema = JSON.stringify(schema).toLowerCase();
+
+    expect(serializedSchema).not.toMatch(
+      /private[_-]?key|identity[_-]?secret|session[_-]?key|plaintext|message[_-]?(body|text)|safety[_-]?(number|display)/u,
+    );
     database.onApplicationShutdown();
   });
 });

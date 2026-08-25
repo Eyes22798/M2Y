@@ -3,11 +3,15 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 import { HealthController } from './health/health.controller';
+import { IdentityModule } from './identity/identity.module';
+import { PairingModule } from './pairing/pairing.module';
 import { PersistenceModule } from './persistence/persistence.module';
 
 @Module({
   controllers: [HealthController],
   imports: [
+    IdentityModule,
+    PairingModule,
     PersistenceModule,
     ThrottlerModule.forRoot([
       {

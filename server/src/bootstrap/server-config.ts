@@ -5,6 +5,7 @@ export const SERVER_CONFIG = Symbol('SERVER_CONFIG');
 export type ServerConfig = Readonly<{
   databasePath: string;
   host: string;
+  inviteHashKey: Buffer;
   port: number;
 }>;
 
@@ -36,6 +37,20 @@ function readNonEmpty(value: string | undefined, fallback: string, code: string)
   return candidate;
 }
 
+function readInviteHashKey(value: string | undefined, databasePath: string): Buffer {
+  if (value === undefined && databasePath === ':memory:') {
+    return Buffer.alloc(32, 0x54);
+  }
+  if (value === undefined || !/^[A-Za-z0-9_-]{43,128}$/u.test(value)) {
+    throw new Error('server-config-invalid-invite-hash-key');
+  }
+  const decoded = Buffer.from(value, 'base64url');
+  if (decoded.length < 32 || decoded.length > 96) {
+    throw new Error('server-config-invalid-invite-hash-key');
+  }
+  return decoded;
+}
+
 export function readServerConfig(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): ServerConfig {
@@ -48,6 +63,7 @@ export function readServerConfig(
   return Object.freeze({
     databasePath: databasePath === ':memory:' ? databasePath : resolve(databasePath),
     host: readNonEmpty(environment.M2Y_SERVER_HOST, '127.0.0.1', 'server-config-invalid-host'),
+    inviteHashKey: readInviteHashKey(environment.M2Y_SERVER_INVITE_HASH_KEY, databasePath),
     port: readPort(environment.M2Y_SERVER_PORT),
   });
 }
