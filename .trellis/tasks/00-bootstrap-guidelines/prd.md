@@ -21,36 +21,86 @@ the rest conversationally.
 
 ## Status (update the checkboxes as you complete each item)
 
-- [ ] Fill backend guidelines
-- [ ] Fill frontend guidelines
-- [ ] Add code examples
+- [x] Fill backend guidelines — as one `server-foundation.md`, per the decision below
+- [x] Fill frontend guidelines — 5 real files; `hook-guidelines.md` deleted as duplicative
+- [x] Add code examples — every remaining spec file carries code blocks and real repo paths
+
+> **Resolved — 2026-08-21 (developer chose option b).** The 7 unfilled templates are gone. Final
+> state of `.trellis/spec/`: **12 md files, 0 placeholders.**
+>
+> | Action | Files |
+> |---|---|
+> | Deleted (untouched `(To be filled by the team)` scaffolding) | `backend/{directory-structure,database-guidelines,error-handling,logging-guidelines,quality-guidelines}.md`, `frontend/hook-guidelines.md` |
+> | Filled from real code this round | `frontend/type-safety.md` |
+> | Already real | `backend/{index,server-foundation}.md`, `frontend/{index,directory-structure,component-guidelines,state-management,quality-guidelines,production-identity}.md`, `guides/*` |
+>
+> **Why the 5 backend files were deleted rather than written.** `server/src/` is 12 files exposing
+> only `GET /health`; five separate convention files over that surface would be aspirational spec,
+> which Step 3 below explicitly forbids and which sub-agents then imitate. `server-foundation.md`
+> (116 lines) already covers all five subjects — the mapping is tabulated in `backend/index.md`,
+> along with the trigger to split it back out: once `08-20-ciphertext-sync-foundation` lands envelope
+> routes, outbox/inbox, cursors and device auth, the file will be carrying genuinely separate
+> concerns and should be re-split **from real code**.
+>
+> **Why `frontend/hook-guidelines.md` was deleted.** The client's whole custom-hook surface is two
+> providers (`WorkspaceProvider` → `useWorkspace()`, `SecureWorkspaceProvider`), both already
+> specified in `state-management.md` with the `useSyncExternalStore` commit rule. A separate file
+> could only duplicate it.
+>
+> **Why `frontend/type-safety.md` was filled instead.** It had real, uncovered surface:
+> `src/domain/<area>/types.ts` and `src/application/<area>/contracts.ts`, the `as const` +
+> `(typeof x)[number]` derived-union pattern, `Readonly<{}>` for data vs `interface` for the 6
+> method-bearing ports, result unions instead of thrown errors, and the four strict compiler flags.
+> Verified against the code while writing it: **0 `enum`, 0 `any`, 6 `interface` declarations (all
+> ports in `src/application/*/contracts.ts`), and `!` only in the dev harness `src/testing/e2ee/`.**
+>
+> **One wiring defect fixed along the way.**
+> `.trellis/tasks/08-20-m2y-product-progress-roadmap/check.jsonl` line 2 was injecting the *empty*
+> `backend/quality-guidelines.md` into every `trellis-check` run — the one live manifest reference to
+> a template. Repointed to `backend/server-foundation.md`. All jsonl targets and all intra-spec
+> markdown links were then verified to resolve.
+>
+> This corrects finding **Low #15** in
+> `.trellis/tasks/08-20-m2y-product-progress-roadmap/research/2026-08-21-full-audit.md`, which read
+> "18 md files exist" as "spec is filled, only the checklist was never written back" and recommended
+> an immediate `finish` + `archive`. The file count was right; the conclusion was not — 7 of those 18
+> were empty. Lesson: a file count is not evidence of fill state.
+>
+> This task is now finishable. See Completion below.
 
 ---
 
 ## Spec files to populate
 
+> The tables below are the **original bootstrap scaffolding list**, kept for provenance. The columns
+> record what each file was supposed to document and what actually happened on 2026-08-21. The live
+> index is `.trellis/spec/{backend,frontend}/index.md`, not this list.
+
 
 ### Backend guidelines
 
-| File | What to document |
-|------|------------------|
-| `.trellis/spec/backend/directory-structure.md` | Where different file types go (routes, services, utils) |
-| `.trellis/spec/backend/database-guidelines.md` | ORM, migrations, query patterns, naming conventions |
-| `.trellis/spec/backend/error-handling.md` | How errors are caught, logged, and returned |
-| `.trellis/spec/backend/logging-guidelines.md` | Log levels, format, what to log |
-| `.trellis/spec/backend/quality-guidelines.md` | Code review standards, testing requirements |
+| File | What to document | Outcome |
+|------|------------------|---------|
+| `.trellis/spec/backend/directory-structure.md` | Where different file types go (routes, services, utils) | deleted → `server-foundation.md` §2 |
+| `.trellis/spec/backend/database-guidelines.md` | ORM, migrations, query patterns, naming conventions | deleted → `server-foundation.md` §3, §6 |
+| `.trellis/spec/backend/error-handling.md` | How errors are caught, logged, and returned | deleted → `server-foundation.md` §4 |
+| `.trellis/spec/backend/logging-guidelines.md` | Log levels, format, what to log | deleted → `server-foundation.md` §3 |
+| `.trellis/spec/backend/quality-guidelines.md` | Code review standards, testing requirements | deleted → `server-foundation.md` §2, §4, §6 |
 
 
 ### Frontend guidelines
 
-| File | What to document |
-|------|------------------|
-| `.trellis/spec/frontend/directory-structure.md` | Component/page/hook organization |
-| `.trellis/spec/frontend/component-guidelines.md` | Component patterns, props conventions |
-| `.trellis/spec/frontend/hook-guidelines.md` | Custom hook naming, patterns |
-| `.trellis/spec/frontend/state-management.md` | State library, patterns, what goes where |
-| `.trellis/spec/frontend/type-safety.md` | TypeScript conventions, type organization |
-| `.trellis/spec/frontend/quality-guidelines.md` | Linting, testing, accessibility |
+| File | What to document | Outcome |
+|------|------------------|---------|
+| `.trellis/spec/frontend/directory-structure.md` | Component/page/hook organization | filled |
+| `.trellis/spec/frontend/component-guidelines.md` | Component patterns, props conventions | filled |
+| `.trellis/spec/frontend/hook-guidelines.md` | Custom hook naming, patterns | deleted → `state-management.md` (only 2 provider hooks exist) |
+| `.trellis/spec/frontend/state-management.md` | State library, patterns, what goes where | filled |
+| `.trellis/spec/frontend/type-safety.md` | TypeScript conventions, type organization | filled 2026-08-21 |
+| `.trellis/spec/frontend/quality-guidelines.md` | Linting, testing, accessibility | filled |
+
+Added by later tasks, outside the original list: `backend/server-foundation.md`,
+`frontend/production-identity.md`.
 
 
 ### Thinking guides (already populated)
@@ -121,8 +171,8 @@ When the developer confirms the checklist items above are done with real
 examples (not placeholders), guide them to run:
 
 ```bash
-python ./.trellis/scripts/task.py finish
-python ./.trellis/scripts/task.py archive 00-bootstrap-guidelines
+python3 ./.trellis/scripts/task.py finish
+python3 ./.trellis/scripts/task.py archive 00-bootstrap-guidelines
 ```
 
 After archive, every new developer who joins this project will get a

@@ -6,7 +6,16 @@
 
 ## Overview
 
-This directory contains guidelines for frontend development. Fill in each file with your project's specific conventions.
+This directory contains guidelines for frontend development. Every file listed below is filled from
+real code in `app/`, `src/` and `modules/`.
+
+`hook-guidelines.md` was untouched bootstrap scaffolding — placeholder markers only — and was
+**deleted on 2026-08-21**. The client's entire custom-hook surface is two providers —
+`src/stores/workspace/WorkspaceProvider.tsx` (`useWorkspace()`) and
+`src/stores/secure-workspace/SecureWorkspaceProvider.tsx` — and both are already specified in
+[State Management](./state-management.md) together with the `useSyncExternalStore` commit rule. A
+separate hook file would only duplicate it. Add one back when hooks exist that are not provider
+accessors.
 
 ---
 
@@ -16,11 +25,10 @@ This directory contains guidelines for frontend development. Fill in each file w
 |-------|-------------|--------|
 | [Directory Structure](./directory-structure.md) | Expo Router root and layer boundaries | Active |
 | [Component Guidelines](./component-guidelines.md) | Component boundaries, cross-platform icons, testing | Active |
-| [Hook Guidelines](./hook-guidelines.md) | Custom hooks, data fetching patterns | To fill |
-| [State Management](./state-management.md) | Committed workspace session and local UI-state contracts | Active |
+| [State Management](./state-management.md) | Committed workspace session, provider hooks, local UI-state contracts | Active |
 | [Quality Guidelines](./quality-guidelines.md) | SDK 56, config, native build, and quality contracts | Active |
 | [Production Identity](./production-identity.md) | Android identity persistence, Keystore, DTO, and reset contracts | Active |
-| [Type Safety](./type-safety.md) | Type patterns, validation | To fill |
+| [Type Safety](./type-safety.md) | Readonly data types, derived unions, port interfaces, strict-flag rules | Active |
 
 ---
 
