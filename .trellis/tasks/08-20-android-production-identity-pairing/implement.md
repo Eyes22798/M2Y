@@ -38,7 +38,7 @@
 2. **`stagePeerCandidate` is package-private and has no production caller.** Staging an inbound candidate is the one pairing action that requires an already-decrypted peer packet, so exposing it over the module boundary before the protocol engine exists would let a caller inject an unauthenticated peer identity. It is exercised only by the instrumentation suite; `M2YCryptoModule.kt` deliberately exposes the other six calls and not this one.
 3. **The outbox acknowledgement receipt is validated but not stored.** Schema v1 has no column for it, and adding one would need a migration whose `onUpgrade` currently throws. `ackPairingOutbox` therefore treats the receipt as proof of delivery (format-checked, `pairing-outbox-receipt-invalid` otherwise) rather than a persisted fact — the same choice `commitIdentityRegistration` already makes.
 4. **Exactly-once intents rest on outbox rows, not on a unique index.** `pairing_outbox` has no unique constraint on `(request_id, packet_type)`; `committedIntentId` enforces it inside the same transaction and matches acknowledged rows too, so repeating a decision after its packet was delivered returns the first operation id instead of queueing a second packet. Both outbox queries order by `created_at_ms ASC, rowid ASC` so the transport gets a real insertion order even for rows written in the same millisecond.
-5. **The pairing instrumentation tests have never been executed.** `PairingTransactionStoreInstrumentedTest` (12 tests) compiles and packages — `:m2y-crypto:assembleDebugAndroidTest` succeeds — but no emulator image or physical device is installed in this environment, so nothing has run them. The JVM half is genuinely green (`pnpm test:native:crypto`: 6 suites / 51 tests). Executing the instrumentation suite is G6's line item and must not be reported as done before then.
+5. **The pairing instrumentation tests now run, on an emulator only.** Resolved on 2026-08-25: `emulator` and `system-images;android-36;aosp_atd;arm64-v8a` were installed, AVD `m2y-atd-36` created, and `:m2y-crypto:connectedDebugAndroidTest` executed **21/21 green with 0 failures and 0 skips** — all 12 of `PairingTransactionStoreInstrumentedTest`, plus 5 `AndroidKeystoreCheckpointInstrumentedTest` and 3 `ProductionIdentityManagerInstrumentedTest`. The JVM half is separately green (`pnpm test:native:crypto`: 6 suites / 51 tests; pass `--rerun-tasks`, because Gradle reports `BUILD SUCCESSFUL` with exit 0 when it skips the task as `UP-TO-DATE`). What G6 still owes is unchanged: no CI job runs this suite, and nothing has been executed on a physical ARM64 device.
 6. **The six new pairing calls stop at the native adapter, with no application-layer port.** `M2YCryptoProductionAdapter` decodes them through `M2YCryptoPairingContract`, but no `ProductionIdentityPort` method is added: nothing in `src/application` can act on a pairing decision until the `PairingApiClient` of section E exists to deliver the queued packets. This follows the existing precedent for `commitIdentityRegistration` and `signDeviceRequest`, which are also adapter-only for the same reason.
 
 ## D. Pairing service API and signed transport
@@ -103,7 +103,26 @@ pnpm build:android:debug -- -PreactNativeArchitectures=x86_64
 pnpm build:android:debug:arm64
 ```
 
-Native Gradle unit/instrumentation targets and server acceptance commands must be added to this list using the exact generated task names once Gate 1/2 establishes them.
+Native Gradle targets, with the exact task names Gate 2 established. Both need
+`JAVA_HOME` on JDK 21 and `ANDROID_HOME`/`ANDROID_SDK_ROOT` on the SDK root:
+
+```powershell
+pnpm test:native:crypto                                   # :m2y-crypto:testDebugUnitTest
+cd android; ./gradlew :m2y-crypto:testDebugUnitTest --rerun-tasks
+cd android; ./gradlew :m2y-crypto:connectedDebugAndroidTest
+```
+
+`pnpm test:native:crypto` prints `BUILD SUCCESSFUL` and exits 0 even when Gradle
+skips the task as `UP-TO-DATE` and runs no test at all, so evidence must come
+from `--rerun-tasks` plus the `tests`/`failures`/`errors` counts in
+`modules/m2y-crypto/android/build/test-results/testDebugUnitTest/*.xml` and
+`.../build/outputs/androidTest-results/connected/debug/*.xml`, never from the
+exit code alone.
+
+`connectedDebugAndroidTest` needs a running device. The headless AVD used on
+2026-08-25 was `m2y-atd-36` on `system-images;android-36;aosp_atd;arm64-v8a`,
+booted with `-no-window -no-audio -no-boot-anim -gpu swiftshader_indirect`. An
+emulator satisfies the suite but not G7's ARM64 physical-device evidence.
 
 ## Risk and rollback points
 
