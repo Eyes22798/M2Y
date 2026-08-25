@@ -1,11 +1,14 @@
-import { type PropsWithChildren, type ReactNode, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { type PropsWithChildren, useState } from 'react';
 
-import { MotionPressable } from '@/design/motion/MotionPressable';
 import { ConfirmDialog } from '@/design/patterns/ConfirmDialog';
-import { AppIcon, type AppIconName } from '@/design/primitives/AppIcon';
-import { colors, radius, spacing, typography } from '@/design/tokens';
+import {
+  DiagnosticCode,
+  GateHint,
+  GateShell,
+  PrimaryButton,
+  ProgressGate,
+  SecondaryButton,
+} from '@/design/patterns/GateShell';
 import { useSecureWorkspace } from '@/stores/secure-workspace/SecureWorkspaceProvider';
 import { WorkspaceProvider } from '@/stores/workspace/WorkspaceProvider';
 
@@ -36,9 +39,9 @@ export function SecureWorkspaceGate({ children }: PropsWithChildren) {
               onPress={() => void secureWorkspace.setup('strong-biometric')}
             />
           ) : null}
-          <Text style={styles.hint}>
+          <GateHint>
             生物识别只是本机访问门槛，不会创建 M2Y-ID，也不代表已建立端到端加密关系。
-          </Text>
+          </GateHint>
         </GateShell>
       );
     case 'locked':
@@ -68,7 +71,7 @@ export function SecureWorkspaceGate({ children }: PropsWithChildren) {
             title="需要重置本机数据"
           >
             <PrimaryButton danger label="删除并重新初始化" onPress={() => setConfirmReset(true)} />
-            <Text style={styles.reasonCode}>{`诊断代码：${state.reason}`}</Text>
+            <DiagnosticCode code={state.reason} />
           </GateShell>
           <ConfirmDialog
             confirmLabel="删除本机数据"
@@ -93,73 +96,12 @@ export function SecureWorkspaceGate({ children }: PropsWithChildren) {
           {state.retryable ? (
             <PrimaryButton label="重试" onPress={() => void secureWorkspace.retry()} />
           ) : null}
-          <Text style={styles.reasonCode}>{`诊断代码：${state.code}`}</Text>
+          <DiagnosticCode code={state.code} />
         </GateShell>
       );
     default:
       return assertNever(state);
   }
-}
-
-function ProgressGate({ description }: { description: string }) {
-  return (
-    <GateShell description={description} icon="lock" title="M2Y">
-      <ActivityIndicator color={colors.accent} size="large" />
-    </GateShell>
-  );
-}
-
-function GateShell({
-  children,
-  description,
-  icon,
-  title,
-}: {
-  children: ReactNode;
-  description: string;
-  icon: AppIconName;
-  title: string;
-}) {
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.card}>
-        <View style={styles.icon}>
-          <AppIcon color={colors.accent} name={icon} size={30} />
-        </View>
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.description}>{description}</Text>
-        <View style={styles.actions}>{children}</View>
-      </View>
-    </SafeAreaView>
-  );
-}
-
-function PrimaryButton({
-  danger = false,
-  label,
-  onPress,
-}: {
-  danger?: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <MotionPressable
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={[styles.primaryButton, danger && styles.dangerButton]}
-    >
-      <Text style={styles.primaryButtonText}>{label}</Text>
-    </MotionPressable>
-  );
-}
-
-function SecondaryButton({ label, onPress }: { label: string; onPress: () => void }) {
-  return (
-    <MotionPressable accessibilityLabel={label} onPress={onPress} style={styles.secondaryButton}>
-      <Text style={styles.secondaryButtonText}>{label}</Text>
-    </MotionPressable>
-  );
 }
 
 function fatalDescription(code: string): string {
@@ -171,55 +113,3 @@ function fatalDescription(code: string): string {
 function assertNever(value: never): never {
   throw new Error(`Unhandled secure workspace screen state: ${String(value)}`);
 }
-
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.xl,
-    backgroundColor: colors.canvas,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 440,
-    gap: spacing.lg,
-    padding: spacing.xl,
-    borderRadius: radius.xl,
-    backgroundColor: colors.surfaceRaised,
-  },
-  icon: {
-    width: 58,
-    height: 58,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.lg,
-    backgroundColor: colors.accentSoft,
-  },
-  title: { ...typography.heading, color: colors.ink },
-  description: { ...typography.body, color: colors.inkMuted },
-  actions: { gap: spacing.md },
-  primaryButton: {
-    minHeight: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-  },
-  dangerButton: { backgroundColor: colors.danger },
-  primaryButtonText: { ...typography.title, color: colors.surfaceRaised },
-  secondaryButton: {
-    minHeight: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceRaised,
-  },
-  secondaryButtonText: { ...typography.title, color: colors.accent },
-  hint: { ...typography.caption, color: colors.inkMuted },
-  reasonCode: { ...typography.caption, color: colors.inkFaint, textAlign: 'center' },
-});

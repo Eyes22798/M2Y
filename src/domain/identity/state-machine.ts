@@ -13,6 +13,9 @@ export function identityRelationshipReducer(
   state: IdentityRelationshipState,
   event: IdentityRelationshipEvent,
 ): IdentityRelationshipState {
+  if (event.type === 'inspectStarted') {
+    return initialIdentityRelationshipState;
+  }
   if (event.type === 'recoveryRequired') {
     return { status: 'recoveryRequired', code: event.code };
   }
@@ -22,7 +25,20 @@ export function identityRelationshipReducer(
 
   switch (state.status) {
     case 'inspecting':
-      return event.type === 'inspectAbsent' ? { status: 'needsIdentity' } : state;
+      switch (event.type) {
+        case 'inspectAbsent':
+          return { status: 'needsIdentity' };
+        case 'inspectPendingRegistration':
+          return {
+            status: 'registering',
+            identity: event.identity,
+            operationId: event.operationId,
+          };
+        case 'inspectUnpaired':
+          return { status: 'unpaired', identity: event.identity };
+        default:
+          return state;
+      }
     case 'needsIdentity':
       return event.type === 'identityCreationStarted' ? { status: 'creatingIdentity' } : state;
     case 'creatingIdentity':

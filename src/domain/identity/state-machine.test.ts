@@ -110,4 +110,35 @@ describe('identity relationship state machine', () => {
       }).status,
     ).toBe('identityChanged');
   });
+
+  it.each([
+    {
+      expected: { status: 'registering', identity, operationId: 'operation-1' },
+      label: 'a registration the native store has not committed yet',
+      event: { type: 'inspectPendingRegistration', identity, operationId: 'operation-1' } as const,
+    },
+    {
+      expected: { status: 'unpaired', identity },
+      label: 'a registered identity with no relationship',
+      event: { type: 'inspectUnpaired', identity } as const,
+    },
+  ])('restores $label on relaunch', ({ event, expected }) => {
+    expect(identityRelationshipReducer(initialIdentityRelationshipState, event)).toEqual(expected);
+  });
+
+  it.each([
+    ['unpaired', { status: 'unpaired', identity }] as const,
+    ['active', { status: 'active', identity, relationship }] as const,
+    ['fatal', { status: 'fatal', code: 'native-unavailable', retryable: true }] as const,
+    ['recoveryRequired', { status: 'recoveryRequired', code: 'key-boundary-broken' }] as const,
+  ])('restarts inspection from %s so no stale identity survives a retry', (_status, state) => {
+    expect(identityRelationshipReducer(state, { type: 'inspectStarted' })).toEqual({
+      status: 'inspecting',
+    });
+  });
+
+  it('ignores restore events once an identity is already known', () => {
+    const unpaired: IdentityRelationshipState = { status: 'unpaired', identity };
+    expect(identityRelationshipReducer(unpaired, { type: 'inspectAbsent' })).toBe(unpaired);
+  });
 });

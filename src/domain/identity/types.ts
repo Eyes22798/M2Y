@@ -93,7 +93,22 @@ export type IdentityRelationshipCommand =
   | Readonly<{ type: 'resetLocalData' }>;
 
 export type IdentityRelationshipEvent =
+  /**
+   * Re-reading the native store always restarts the machine, so a retry or a reset cannot leave a
+   * stale identity on screen while the inspection that would replace it is still running.
+   */
+  | Readonly<{ type: 'inspectStarted' }>
   | Readonly<{ type: 'inspectAbsent' }>
+  /**
+   * A relaunch has to be able to land back on the state the native store already persisted;
+   * without these two events a restart could only ever report "no identity".
+   */
+  | Readonly<{
+      type: 'inspectPendingRegistration';
+      identity: IdentitySummary;
+      operationId: string;
+    }>
+  | Readonly<{ type: 'inspectUnpaired'; identity: IdentitySummary }>
   | Readonly<{ type: 'identityCreationStarted' }>
   | Readonly<{
       type: 'identityPrepared';

@@ -10,13 +10,15 @@ const expectedIdentifiers = new Map([
   ['production', 'com.m2y.app'],
 ]);
 
-const configs = variants.map((variant) => {
+const configs = variants.map((variant) => ({ variant, config: loadPublicConfig(variant) }));
+
+function loadPublicConfig(variant, extraEnv = {}) {
   const result = spawnSync(
     process.execPath,
     [require.resolve('expo/bin/cli'), 'config', '--type', 'public', '--json'],
     {
       cwd: process.cwd(),
-      env: { ...process.env, APP_VARIANT: variant },
+      env: { ...process.env, APP_VARIANT: variant, M2Y_DEV_SERVER_URL: '', ...extraEnv },
       encoding: 'utf8',
       shell: false,
     },
@@ -26,8 +28,8 @@ const configs = variants.map((variant) => {
     throw new Error(`Unable to load ${variant} config:\n${result.stderr}`);
   }
 
-  return { variant, config: JSON.parse(result.stdout) };
-});
+  return JSON.parse(result.stdout);
+}
 
 for (const { variant, config } of configs) {
   const expectedIdentifier = expectedIdentifiers.get(variant);
@@ -40,6 +42,14 @@ for (const { variant, config } of configs) {
 
   if (config.extra?.variant !== variant || typeof config.extra?.apiBaseUrl !== 'string') {
     throw new Error(`${variant} public extra is incomplete.`);
+  }
+
+  if (new URL(config.extra.apiBaseUrl).protocol !== 'https:') {
+    throw new Error(`${variant} must use an HTTPS pairing base URL.`);
+  }
+
+  if ('devServerUrl' in (config.extra ?? {})) {
+    throw new Error(`${variant} must not carry a development server override by default.`);
   }
 
   if (config.android?.allowBackup !== false) {
@@ -87,4 +97,17 @@ if (uniqueIdentifiers.size !== variants.length) {
   throw new Error('Native identifiers must be unique for all three variants.');
 }
 
-process.stdout.write('Verified development, preview, and production public config.\n');
+const overrideEnv = { M2Y_DEV_SERVER_URL: 'http://127.0.0.1:8081' };
+for (const variant of variants) {
+  const { extra } = loadPublicConfig(variant, overrideEnv);
+  const expected = variant === 'development' ? overrideEnv.M2Y_DEV_SERVER_URL : undefined;
+  if (extra?.devServerUrl !== expected) {
+    throw new Error(
+      `M2Y_DEV_SERVER_URL must reach ${variant} public config only in development builds.`,
+    );
+  }
+}
+
+process.stdout.write(
+  'Verified development, preview, and production public config, including the development-only server override.\n',
+);

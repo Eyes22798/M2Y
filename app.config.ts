@@ -28,9 +28,20 @@ function resolveVariant(value: string | undefined): AppVariant {
   return 'development';
 }
 
+/**
+ * The local pairing service is reached over loopback HTTP during development only. Preview and
+ * production must stay HTTPS-only, so the override is dropped for those variants even when the
+ * environment variable is present in the build shell.
+ */
+function resolveDevServerUrl(variant: AppVariant): string | undefined {
+  const value = process.env.M2Y_DEV_SERVER_URL?.trim();
+  return variant === 'development' && value ? value : undefined;
+}
+
 export default ({ config }: ConfigContext): ExpoConfig => {
   const variant = resolveVariant(process.env.APP_VARIANT);
   const environment = variants[variant];
+  const devServerUrl = resolveDevServerUrl(variant);
 
   return {
     ...config,
@@ -91,6 +102,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     extra: {
       variant,
       apiBaseUrl: environment.apiBaseUrl,
+      ...(devServerUrl === undefined ? {} : { devServerUrl }),
     },
   };
 };

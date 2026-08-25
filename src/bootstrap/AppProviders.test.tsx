@@ -1,6 +1,8 @@
 import { render } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
+import type { PublicConfigResult } from '@/application/config/contracts';
+import type { IdentityRelationshipController } from '@/application/identity/contracts';
 import type {
   SecureWorkspaceController,
   SecureWorkspaceState,
@@ -25,7 +27,20 @@ describe('AppProviders', () => {
       retry: async () => undefined,
       handleAppBackground: async () => undefined,
     };
-    const runtime: AppRuntime = { secureWorkspaceController: controller };
+    const identityState = { status: 'unpaired', identity } as const;
+    const identityRelationshipController: IdentityRelationshipController = {
+      getState: () => identityState,
+      subscribe: () => () => undefined,
+      inspect: async () => undefined,
+      createIdentity: async () => undefined,
+      resetLocalData: async () => undefined,
+      retry: async () => undefined,
+    };
+    const runtime: AppRuntime = {
+      identityRelationshipController,
+      publicConfig: shippedPlaceholderConfig,
+      secureWorkspaceController: controller,
+    };
     const view = await render(
       <AppProviders runtime={runtime}>
         <Text>provider content</Text>
@@ -35,3 +50,17 @@ describe('AppProviders', () => {
     expect(view.getByText('provider content')).toBeTruthy();
   });
 });
+
+const identity = {
+  deviceId: '1ab9957e-2c7f-4ec6-80b2-26941a506ca4',
+  m2yId: 'M2Y-2345-6789-ABCD-EFGH',
+  stableIdentityId: '839c065c-b7ad-43ea-99ba-a3338037178a',
+};
+
+const shippedPlaceholderConfig: PublicConfigResult = {
+  ok: true,
+  config: {
+    pairingEndpoint: { kind: 'placeholder', host: 'api.m2y.invalid' },
+    variant: 'development',
+  },
+};

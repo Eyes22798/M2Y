@@ -1,11 +1,17 @@
-import { AuthPlaceholderScreen } from '@/features/identity/screens/AuthPlaceholderScreen';
+import { useRouter } from 'expo-router';
+
+import { CreateIdentityScreen } from '@/features/identity/screens/CreateIdentityScreen';
+import { useIdentityRelationship } from '@/stores/identity/IdentityRelationshipProvider';
 
 export default function CreateIdentityRoute() {
+  const router = useRouter();
+  const { access } = useIdentityRelationship();
+  const canUseWorkspaceWithoutIdentity =
+    access.kind === 'granted' && access.reason === 'pairing-transport-unavailable';
+
   return (
-    <AuthPlaceholderScreen
-      step="01"
-      title="创建你的本地身份"
-      description="密钥只属于你。正式身份流程将在安全 Spike 验证后接入。"
+    <CreateIdentityScreen
+      onSkip={canUseWorkspaceWithoutIdentity ? () => router.replace('/chat') : undefined}
     />
   );
 }
