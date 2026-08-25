@@ -141,5 +141,5 @@ C 含同步半边，因此「Spike C 已完成」不是有效表述：SQLCipher 
 - Android arm64 Development Build 已在 Windows 完整编译，APK 为 98,531,990 bytes，SHA-256 为 `CF70C730F2D7045ADABE447CDB8CB3B334B1F329F397A4BE88CECD4C44395900`
 - 真机证据已存在：realme RMX3888（Android API 36、arm64）完成 SQLCipher/Keystore 强生物识别序列与 libsignal Spike 七步验收；Chat 键盘与发送在 API 37.1 x86_64 模拟器验收
 - 仍未做：release 真机性能量化（FPS/内存/跳帧）、双安装端到端配对、E2E 框架（Detox/Maestro 未二选一）、独立安全审计
-- `modules/m2y-crypto` 的 JVM 单测（3 个测试类 / 8 个 `@Test`，不需要真机）已进入 CI 的独立 `native-crypto` job，但该 job **尚未经过首轮 CI 验证**：本机没有 JDK 与 Android SDK，只在本地验证了 Gradle wrapper 的调用参数。原生编译（`:app:assembleDebug`）与 instrumentation 测试仍**没有进入 CI**，只在人工流程中执行
+- `modules/m2y-crypto` 的 JVM 单测（3 个测试类 / 8 个 `@Test`，不需要真机）已进入 CI 的独立 `native-crypto` job，并于 **2026-08-25 首轮 CI 通过**（run `32801061363`，10 个步骤全绿）——已确认 Gradle 能在无 NDK 的 GitHub runner 上只配置并执行 `:m2y-crypto:testDebugUnitTest`。原生编译（`:app:assembleDebug`）与 instrumentation 测试仍**没有进入 CI**，只在人工流程中执行
 - iOS 为零覆盖且被代码硬性阻断：`ios/` 不存在、`modules/m2y-crypto` 无 iOS 实现、`createAppRuntime.ts` 写死 `platformSupported: Platform.OS === 'android'`。PRD 把 iOS 列为 P0，该缺口需要显式决策而不是顺延

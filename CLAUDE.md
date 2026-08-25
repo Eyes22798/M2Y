@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 技术选型文档明确：E2EE 原生集成与 E2E 测试工具**必须先完成技术验证（M0 四个 Spike）**，之后才能固化目录与基础设施。四个 Spike 中 A 未开始、B/C/D 各为部分完成，没有一项在「双平台 + 完整量化证据」意义上关闭。
 
-JS/TS 层门禁已可运行且实测全绿（合计 23 套件 / 85 用例）：客户端 `pnpm format:check` / `typecheck` / `lint` / `deps:check` / `test --ci` / `test:migrations` / `config:check` / `pnpm exec expo-doctor`，服务端同名 `server:*`。`pnpm typecheck` 之前必须先跑 `pnpm exec expo customize tsconfig.json`——expo-router 的 typed routes 写在被 gitignore 的 `.expo/types/` 里，缺失时 `Href` 会退化成宽松类型而静默跳过校验。原生侧只有 `modules/m2y-crypto` 的 JVM 单测进了 CI（`native-crypto` job → `pnpm test:native:crypto`，首轮 CI 结果尚未回来）；**原生编译（`:app:assembleDebug`）、instrumentation 测试与 E2E 仍然没有任何门禁**（技术选型 §19.2 唯一列为「极高」的风险，只被部分缓解）。
+JS/TS 层门禁已可运行且实测全绿（合计 23 套件 / 85 用例）：客户端 `pnpm format:check` / `typecheck` / `lint` / `deps:check` / `test --ci` / `test:migrations` / `config:check` / `pnpm exec expo-doctor`，服务端同名 `server:*`。`pnpm typecheck` 之前必须先跑 `pnpm exec expo customize tsconfig.json`——expo-router 的 typed routes 写在被 gitignore 的 `.expo/types/` 里，缺失时 `Href` 会退化成宽松类型而静默跳过校验。原生侧只有 `modules/m2y-crypto` 的 JVM 单测进了 CI（`native-crypto` job → `pnpm test:native:crypto`，2026-08-25 首轮 CI 通过，Gradle 能在无 NDK 的 runner 上单独执行该 task）；**原生编译（`:app:assembleDebug`）、instrumentation 测试与 E2E 仍然没有任何门禁**（技术选型 §19.2 唯一列为「极高」的风险，只被部分缓解）。
 
 ## 产品一句话与核心闭环
 

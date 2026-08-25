@@ -271,7 +271,7 @@ E2EE。
 
 | # | 差异 | 证据 |
 |---|---|---|
-| 1 | 声称「全量自动门禁通过」；实际 **CI 自 `38cf657` 起在 server 单测稳定失败**，`pnpm server:build` 从未在 CI 执行过，`d82644f` 并未通过完整 CI | `.github/workflows/ci.yml:36`（实测确认行内容与引入提交 `38cf657`）；实跑输出 `No tests found, exiting with code 1` / `Pattern: --ci - 0 matches`。改为 `pnpm --filter @m2y/server test --ci` 后 4 套件 10 用例全绿 → **命令写法缺陷，非代码缺陷** |
+| 1 | 声称「全量自动门禁通过」；实际 **CI 自 `38cf657` 起在 server 单测稳定失败**，`pnpm server:build` 从未在 CI 执行过，`d82644f` 并未通过完整 CI | `.github/workflows/ci.yml:36`（实测确认行内容与引入提交 `38cf657`）；实跑输出 `No tests found, exiting with code 1` / `Pattern: --ci - 0 matches`。改为 `pnpm --filter @m2y/server test --ci` 后 4 套件 10 用例全绿 → **命令写法缺陷，非代码缺陷**。**2026-08-25 已由 CI 自身证实并闭环**：run 历史里 `d82644f` = failure，修复后的 `fdd8aaf` = success（run `32801061363`），`pnpm server:build` 首次在 CI 执行成功 |
 | 2 | `CLAUDE.md:7,14` 声称「SQLCipher 同步、服务端尚未实现」「目前没有可运行的构建/测试命令」；三处均已过时 | 实跑 `pnpm test --ci` → 19 suites / 75 tests 全通过；`pnpm deps:check` 0 违规；`src/data/sqlite/schema-v1.ts`、`server/src/persistence/migrations.ts` 已落地。仅「E2E 工具未定」这一项仍成立 |
 | 3 | `08-12-m2y-skeleton` 为 `status: completed` 并已归档；实际 **14 条 AC 全部未勾选** | `archive/2026-08/08-12-m2y-skeleton/prd.md`（checked=0 / unchecked=14）；`README.md:119-120`「当前没有连接的 Android 设备/模拟器…」「iOS 编译尚待 macOS/EAS」 |
 | 4 | 技术选型 §14 声称测试金字塔含「原生集成：iOS/Android test target」、§15.4 主分支门禁含 preview build 与 security tests；实际 **CI 无任何原生编译或原生测试步骤** | `ci.yml` 仅 14 个 run 步骤，末行仍是注释 `# Database migration tests become required when Spike C creates the first schema.`；`package.json` 的 `jest.testMatch` 只匹配 `<rootDir>/src/**/*.test.ts(x)`，`app/` 与 `modules/` 下的测试被静默忽略 |
@@ -361,10 +361,16 @@ src/features/settings/screens/SettingsScreen.tsx(83,19): error TS2322: Type '"/_
 ### 7.4 门禁配置缺陷清单
 
 > **状态（2026-08-21 实施后）**：第 1、2、3、4、7 项已修复并本地实测；第 5 项（原生编译/测试门禁）
-> 已写入 CI（`native-crypto` job，跑 `:m2y-crypto:testDebugUnitTest`），但**本机无 JDK 与 Android
-> SDK，Gradle 那一步只能靠首轮 CI 验证**——已本地实测的是 wrapper 的 argv 构造（JDK21 运行 Gradle +
-> `-Dorg.gradle.java.installations.paths=jdk17,jdk21` + 只跑该 task，且 `:app:assembleDebug` 与
-> arm64 两条既有用法 argv 逐字未变）；第 6 项（server lint 复用根 eslint 配置）未处理。
+> 已写入 CI（`native-crypto` job，跑 `:m2y-crypto:testDebugUnitTest`）；第 6 项（server lint 复用根
+> eslint 配置）未处理。
+>
+> **状态（2026-08-25 首轮 CI 回来后）**：第 5 项**已闭环**。当时本机无 JDK 与 Android SDK，只能本地
+> 实测 wrapper 的 argv 构造（JDK21 运行 Gradle + `-Dorg.gradle.java.installations.paths=jdk17,jdk21`
+> + 只跑该 task，且 `:app:assembleDebug` 与 arm64 两条既有用法 argv 逐字未变），Gradle 那一步留给首轮
+> CI。首轮结果：`fdd8aaf` 的 run `32801061363` 两个 job 全绿——`native-crypto` 10 步全通过，**「Gradle
+> 能否在无 NDK 的 runner 上只配置并执行该 task」这一开放问题的答案是能**。同一 run 还首次跑通了
+> `pnpm --filter @m2y/server test --ci`（步骤 20）与 `pnpm server:build`（步骤 22），这两步自 `38cf657`
+> 起从未在 CI 成功过。第 1 项因此也拿到了 CI 级证据：`d82644f` = failure → `fdd8aaf` = success。
 
 1. `.github/workflows/ci.yml:36` 的 `--` 使 server 单测必然失败，连带第 37 行 `server:build`
    从未执行 —— **唯一「仓库自称有、实际过不了」的门禁**
@@ -416,13 +422,19 @@ src/features/settings/screens/SettingsScreen.tsx(83,19): error TS2322: Type '"/_
 > 的 `--` 已修、typed-routes 生成步骤已插到 `typecheck` 之前、migration 已成为显式门禁、
 > `jest.testMatch` 已扩到 `app/**` 与 `modules/**`、`CLAUDE.md` / `README.md` / `progress-snapshots.md`
 > / `current-state-baseline.md` / 父任务 `prd.md` 基线已刷新、`08-12-m2y-skeleton` 的 14 条 AC 已按实测
-> 回写（12 勾 2 不勾）。①的第 5 条（把 `:m2y-crypto:testDebugUnitTest` 加入 CI）**已写入但未经 CI 验证**：
+> 回写（12 勾 2 不勾）。①的第 5 条（把 `:m2y-crypto:testDebugUnitTest` 加入 CI）：
 > 新增独立 job `native-crypto`（装 JDK 17 + JDK 21、缓存 Gradle、prebuild 后跑
 > `pnpm test:native:crypto`），刻意与 `mobile` 分开，使工具链失败不会污染已实测的门禁结果。该模块
 > `android/src/test/` 下确有 3 个纯 JVM 测试类共 8 个 `@Test`（`LibsignalProtocolProbeTest`、
 > `M2YCheckpointStateTest`、`ProductionIdentityIdsTest`，只依赖 JUnit4 与 `java.util`/`java.security`，
-> 不触碰 native `.so`，无需真机），所以这不是一个空门禁。**首轮 CI 必须盯**：Gradle 能否在无 NDK 的
-> GitHub runner 上只配置并执行该 task。
+> 不触碰 native `.so`，无需真机），所以这不是一个空门禁。写入时**未经 CI 验证**，留下的开放问题是
+> Gradle 能否在无 NDK 的 GitHub runner 上只配置并执行该 task。
+>
+> **首轮 CI 结果（2026-08-25）：能。** 四笔提交推上 `main` 后，`fdd8aaf` 的 run `32801061363` 两个 job
+> 全绿：`native-crypto` 10 步全通过，`mobile` 22 步全通过（其中步骤 20 `pnpm --filter @m2y/server
+> test --ci` 与步骤 22 `pnpm server:build` 是自 `38cf657` 以来第一次在 CI 成功执行）。对照 run 历史，
+> `d82644f` = **failure** → `fdd8aaf` = **success**，High #1 至此有了 CI 级证据，不再只是本地实跑推断。
+> 剩余缺口不变：`:app:assembleDebug`、instrumentation 与 E2E 仍无门禁。
 
 理由：33% 基线是后续排期的唯一输入，落后 4 个提交会同时造成两种误判——低估已落地的身份/服务端
 增量，以及因为「表已建好」而高估配对进度。
