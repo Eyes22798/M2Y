@@ -295,7 +295,7 @@ E2EE。
 
 | # | 差异 | 证据 |
 |---|---|---|
-| 15 | `00-bootstrap-guidelines` 三条 checklist 全未勾——本轮曾据「`.trellis/spec/` 下有 18 个 md」判为「spec 已填、只是 checklist 未回写、可直接 `finish` + `archive`」。**该结论已于 2026-08-21 复核推翻** | 18 个文件数是对的，但其中 **7 个仍是带 `(To be filled by the team)` 占位的空模板**：`backend/{directory-structure,database-guidelines,error-handling,logging-guidelines,quality-guidelines}.md` 与 `frontend/{hook-guidelines,type-safety}.md`。即 backend 要求的 5 个文件 **0/5 已填**，frontend 要求的 6 个文件 4/6 已填。真正有内容的 `backend/server-foundation.md`（116 行）与 `frontend/production-identity.md`（76 行）是后续任务新增的，不属于 bootstrap 要求的 11 个文件。因此本任务**不可归档**；详细状态与两个处理选项已写入 `.trellis/tasks/00-bootstrap-guidelines/prd.md`。教训：文件数不是填充度证据。**2026-08-21 已闭环**：开发者选定「不硬写 backend 五件套」，6 个空模板已删（5 个 backend + `frontend/hook-guidelines.md`），`frontend/type-safety.md` 已按真实代码填写，两个 `index.md` 记录了删除理由与「密文同步落地后按真实代码再拆分」的触发条件；同时修掉了唯一一处把空模板注入 sub-agent 的接线（`08-20-m2y-product-progress-roadmap/check.jsonl:2` → `backend/server-foundation.md`）。现状：`.trellis/spec/` 12 个 md、0 个占位符，本任务可归档 |
+| 15 | `00-bootstrap-guidelines` 三条 checklist 全未勾——本轮曾据「`.trellis/spec/` 下有 18 个 md」判为「spec 已填、只是 checklist 未回写、可直接 `finish` + `archive`」。**该结论已于 2026-08-21 复核推翻** | 18 个文件数是对的，但其中 **7 个仍是带 `(To be filled by the team)` 占位的空模板**：`backend/{directory-structure,database-guidelines,error-handling,logging-guidelines,quality-guidelines}.md` 与 `frontend/{hook-guidelines,type-safety}.md`。即 backend 要求的 5 个文件 **0/5 已填**，frontend 要求的 6 个文件 4/6 已填。真正有内容的 `backend/server-foundation.md`（116 行）与 `frontend/production-identity.md`（76 行）是后续任务新增的，不属于 bootstrap 要求的 11 个文件。因此本任务**不可归档**；详细状态与两个处理选项已写入 `.trellis/tasks/archive/2026-08/00-bootstrap-guidelines/prd.md`（该文件 2026-08-25 随任务归档移入 `archive/`）。教训：文件数不是填充度证据。**2026-08-21 已闭环**：开发者选定「不硬写 backend 五件套」，6 个空模板已删（5 个 backend + `frontend/hook-guidelines.md`），`frontend/type-safety.md` 已按真实代码填写，两个 `index.md` 记录了删除理由与「密文同步落地后按真实代码再拆分」的触发条件；同时修掉了唯一一处把空模板注入 sub-agent 的接线（`08-20-m2y-product-progress-roadmap/check.jsonl:2` → `backend/server-foundation.md`）。现状：`.trellis/spec/` 12 个 md、0 个占位符。**2026-08-25 已归档**（`task.py archive`，`status: completed`） |
 | 16 | `08-20-android-security-data-foundation` 的真机结论一度被认为只有文字支撑；**此结论应修正** | `.planning/figma-design-implementation/evidence/android-security/01-setup.png` 至 `11-physical-native-storage-pass.png` 共 11 张 git 跟踪 PNG + README，命名与 implement.md 勾选项一一对应。真机结论有图像证据，只是存放位置脱离 Trellis 任务目录约定 |
 | 17 | `modules/m2y-crypto/index.ts` 统一导出 12 个 API；`src/M2YCryptoModule.web.ts` **只导出 7 个 Spike 函数** | web 平台解析到 `.web.ts` 时 5 个生产身份函数会是 `undefined` 而非受控抛错，与该模块「所有失败路径收敛成稳定错误码」的设计意图不一致；`app.config.ts` 已配 `web.output: 'static'`，该路径并非不可达 |
 | 18 | SecureWorkspaceGate 显示「本机加密存储」，UI 上的内容看似用户数据；实际是**演示 seed 写入真实 SQLCipher 生产库** | `src/data/sqlite/seed.ts:17-40` 在 `withKeyedWriteTransaction` 内插入 `demoWorkspaceSnapshot`（`src/application/workspace/demo-workspace.ts:8,22,30-41`，含一条 `kind:'agreement'` 的「电影 · 周六 19:30」），无演示/真实数据隔离标记或清理路径 |
@@ -411,7 +411,8 @@ src/features/settings/screens/SettingsScreen.tsx(83,19): error TS2322: Type '"/_
 > 当时**不可归档**——`.trellis/spec/` 的 18 个 md 里有 7 个仍是空模板（backend 要求的 5 个文件 0/5 已填）。
 > **该项已于同日闭环**：6 个空模板删除、`frontend/type-safety.md` 按真实代码填写、`.trellis/spec/`
 > 现为 12 个 md / 0 占位符，任务可归档。见修正后的 Low #15 与
-> `.trellis/tasks/00-bootstrap-guidelines/prd.md`。其余四条已完成：`ci.yml`
+> `.trellis/tasks/archive/2026-08/00-bootstrap-guidelines/prd.md`（2026-08-25 已 `archive`，
+> `status: completed`，活动任务从 7 个降到 6 个）。其余四条已完成：`ci.yml`
 > 的 `--` 已修、typed-routes 生成步骤已插到 `typecheck` 之前、migration 已成为显式门禁、
 > `jest.testMatch` 已扩到 `app/**` 与 `modules/**`、`CLAUDE.md` / `README.md` / `progress-snapshots.md`
 > / `current-state-baseline.md` / 父任务 `prd.md` 基线已刷新、`08-12-m2y-skeleton` 的 14 条 AC 已按实测
