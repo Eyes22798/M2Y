@@ -40,6 +40,20 @@ const javaInstallationPaths = java17Home
 
 const distributionUrlOverride = process.env.GRADLE_DISTRIBUTION_URL;
 
+// `--tasks <task...>` replaces the default APK target and consumes the rest of argv, so CI can
+// run the JVM-only crypto unit tests without paying for a full assembleDebug. All the JDK 21 /
+// JDK 17 toolchain plumbing above is shared, which is the part that is hard to get right.
+const forwardedArguments = process.argv.slice(2);
+const tasksFlagIndex = forwardedArguments.indexOf('--tasks');
+const gradleTasks =
+  tasksFlagIndex === -1 ? [':app:assembleDebug'] : forwardedArguments.slice(tasksFlagIndex + 1);
+const gradleArguments =
+  tasksFlagIndex === -1 ? forwardedArguments : forwardedArguments.slice(0, tasksFlagIndex);
+
+if (gradleTasks.length === 0) {
+  throw new Error('--tasks requires at least one Gradle task, for example :app:assembleDebug.');
+}
+
 if (distributionUrlOverride) {
   const parsedUrl = new URL(distributionUrlOverride);
 
@@ -75,8 +89,8 @@ const result = spawnSync(
     ...(javaInstallationPaths
       ? [`-Dorg.gradle.java.installations.paths=${javaInstallationPaths}`]
       : []),
-    ':app:assembleDebug',
-    ...process.argv.slice(2),
+    ...gradleTasks,
+    ...gradleArguments,
   ],
   {
     cwd: repositoryRoot,

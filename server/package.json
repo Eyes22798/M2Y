@@ -12,6 +12,7 @@
     "lint": "eslint src test --max-warnings 0",
     "start": "node dist/main.js",
     "test": "jest --runInBand",
+    "test:migrations": "jest --runInBand src/persistence/database.service.spec.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

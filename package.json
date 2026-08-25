@@ -69,6 +69,8 @@
     "format:check": "prettier --check \"app/**/*.{ts,tsx}\" \"src/**/*.{ts,tsx}\" \"scripts/**/*.{mjs,js}\" \"modules/**/*.{json,js,ts}\" \"*.{json,js,cjs,ts}\" \".github/**/*.yml\"",
     "deps:check": "depcruise --config .dependency-cruiser.cjs app src",
     "test": "jest",
+    "test:migrations": "jest src/data/sqlite/migrations.test.ts",
+    "test:native:crypto": "node scripts/build-android-debug.mjs --tasks :m2y-crypto:testDebugUnitTest",
     "config:check": "node scripts/verify-app-config.mjs",
     "doctor": "expo-doctor",
     "prebuild:android": "expo prebuild --clean --no-install --platform android",
@@ -79,6 +81,7 @@
     "server:typecheck": "pnpm --filter @m2y/server typecheck",
     "server:lint": "pnpm --filter @m2y/server lint",
     "server:test": "pnpm --filter @m2y/server test",
+    "server:test:migrations": "pnpm --filter @m2y/server test:migrations",
     "server:build": "pnpm --filter @m2y/server build",
     "prepare": "husky"
   },
@@ -104,6 +107,10 @@
       "<rootDir>/jest.setup.js"
     ],
     "testMatch": [
+      "<rootDir>/app/**/*.test.ts",
+      "<rootDir>/app/**/*.test.tsx",
+      "<rootDir>/modules/**/*.test.ts",
+      "<rootDir>/modules/**/*.test.tsx",
       "<rootDir>/src/**/*.test.ts",
       "<rootDir>/src/**/*.test.tsx"
     ],
