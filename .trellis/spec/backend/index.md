@@ -6,12 +6,10 @@
 
 ## Overview
 
-`server-foundation.md` is the single source of backend conventions. It is deliberately one file:
-`server/src/` is currently 12 files — `bootstrap/server-config.ts`, `health/health.controller.ts`,
-`observability/redacted-logger.ts`, `persistence/{database.service,migrations,service-metadata.repository}.ts`
-and their specs — exposing only `GET /health`. Splitting that surface across five convention files
-would produce aspirational spec that the code cannot back, which is exactly what sub-agents then
-imitate.
+`server-foundation.md` owns workspace, bootstrap, durable SQLite and redacted logging conventions.
+`pairing-api.md` owns the implemented signed identity and pairing HTTP contract. The split is backed
+by production code: the server now exposes identity registration/prekey management plus invitation,
+request relay, verification and event routes over schema v5.
 
 The five split files (`directory-structure`, `database-guidelines`, `error-handling`,
 `logging-guidelines`, `quality-guidelines`) existed as untouched bootstrap scaffolding — every section
@@ -26,10 +24,8 @@ read as filled. Their subjects are already covered by `server-foundation.md`:
 | `logging-guidelines.md` | §3 Contracts — the `RedactedLogger` contract and the forbidden-field list |
 | `quality-guidelines.md` | §2 quality commands, §4 "warnings mean the gate is unclean", §6 Tests Required |
 
-**Re-split when the server earns it.** `08-20-ciphertext-sync-foundation` adds envelope routes,
-outbox/inbox, cursors and device auth. Once those land, `server-foundation.md` will be carrying
-several genuinely different concerns and should be split back out from real code — not from this
-scaffolding.
+The deleted bootstrap scaffolds stay deleted. Add a new backend spec only after its corresponding
+runtime boundary and tests exist; never recreate placeholder-only files.
 
 ---
 
@@ -38,6 +34,7 @@ scaffolding.
 | Guide | Description | Status |
 |-------|-------------|--------|
 | [Pairing Service Foundation](./server-foundation.md) | Nest workspace, SQLite, logs, native dependency gates | Active |
+| [Signed Pairing API](./pairing-api.md) | Canonical signatures, identity/prekey contracts, pairing state and stable failures | Active |
 
 ---
 

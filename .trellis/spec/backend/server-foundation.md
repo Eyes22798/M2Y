@@ -21,6 +21,7 @@ server/test/**/*.e2e.spec.ts        -> HTTP composition tests
 M2Y_SERVER_HOST=<bind-host>
 M2Y_SERVER_PORT=<1..65535>
 M2Y_SERVER_DATABASE_PATH=<durable-file-path>
+M2Y_SERVER_INVITE_HASH_KEY=<base64url 32-byte secret>
 
 DatabaseService.onModuleInit()         -> open, PRAGMA, migrate, verify version
 DatabaseService.onApplicationShutdown() -> close connection
@@ -44,6 +45,7 @@ pnpm server:build
 - Server TypeScript uses strict mode, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, decorators, Node16 module resolution, and Node 24 types.
 - Controllers validate HTTP input and call feature services. They do not issue SQL, read `process.env`, or serialize native/client implementation objects.
 - The pairing service uses exact-pinned `better-sqlite3` with a durable file. `:memory:` is allowed only in tests; production schema auto-sync and in-memory fallback are forbidden.
+- A durable database requires `M2Y_SERVER_INVITE_HASH_KEY`; only `:memory:` test composition may use the fixed test key supplied by config.
 - Apply foreign keys, WAL journaling, and a bounded busy timeout before serving requests. Each migration and version insert executes in one SQLite transaction.
 - Repositories use prepared statements and return typed projections instead of raw rows.
 - Root `.npmrc` keeps the hoisted linker required by Android builds. Native addons must be explicitly listed in root `pnpm.onlyBuiltDependencies`; never approve all ignored scripts.

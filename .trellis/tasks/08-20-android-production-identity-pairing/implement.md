@@ -15,7 +15,7 @@
 - [x] Add strict public config reader and development-only local server override; preserve HTTPS-only preview/production rules.
 - [x] Add `IdentityRelationshipProvider` and gate under `SecureWorkspaceGate.ready`; main private screens mount only when relationship is active.
 - [x] Preserve existing SQLCipher workspace data across the no-identity upgrade path and remove unconditional `/chat` entry behavior.
-- [ ] Add stable error taxonomy shared through explicit client/server fixture files, not duplicated ad hoc strings.
+- [x] Add stable error taxonomy shared through explicit client/server fixture files, not duplicated ad hoc strings.
 
 ### Deviations recorded while implementing B2–B4
 
@@ -43,23 +43,64 @@
 
 ## D. Pairing service API and signed transport
 
-- [ ] Implement device self-signed registration and exact M2Y-ID collision/retry semantics.
-- [ ] Implement signature middleware/guard for canonical request, clock skew and nonce replay.
-- [ ] Implement identities, public prekey bundles, one-time prekey lease/replenishment and stable public DTO validation.
-- [ ] Implement invitation ticket/handshake-code creation, hashing, 10-minute expiry and one-time consumption.
-- [ ] Implement pair prepare/submit/events/respond/verify/cancel state machine with idempotent operation IDs.
-- [ ] Enforce both-member unique active relationship transactionally.
-- [ ] Add route-specific rate limits, length/body limits and log/database sensitive-pattern tests.
+- [x] Implement device self-signed registration and exact M2Y-ID collision/retry semantics.
+- [x] Implement signature middleware/guard for canonical request, clock skew and nonce replay.
+- [x] Implement identities, public prekey bundles, one-time prekey lease/replenishment and stable public DTO validation.
+- [x] Implement invitation ticket/handshake-code creation, hashing, 10-minute expiry and one-time consumption.
+- [x] Implement pair prepare/submit/events/respond/verify/cancel state machine with idempotent operation IDs.
+- [x] Enforce both-member unique active relationship transactionally.
+- [x] Add route-specific rate limits, length/body limits and log/database sensitive-pattern tests.
+
+### D verification evidence and boundary notes
+
+1. **All discovery modes now share one durable request state machine.** M2Y-ID resolution and the
+   hashed, one-use QR/handshake invitations converge in `PairingRequestRepository.prepare`; prekey
+   lease and invitation consume run inside the same `IMMEDIATE` transaction. Submit, response,
+   cancel, reciprocal verification, expiry events and unique two-member activation use schema v5.
+2. **Device authentication covers the exact bytes sent by Android.** The canonical transcript is
+   `M2Y-REQUEST-V1`, uppercase method, sorted path/query, millisecond timestamp, nonce and SHA-256 of
+   the raw body. Nest composition keeps `rawBody`, enforces a 32 KiB parser limit, accepts only the
+   P-256 device key ID and durably rejects nonce replay within the five-minute window.
+3. **The public failure boundary is shared and closed.**
+   `contracts/pairing-v1/error-codes.json` feeds strict client/server projections. Validation,
+   body-parser, throttler, auth, idempotency and state errors expose only fixture-backed
+   `{ code, schemaVersion: 1 }`; unknown dependency failures become `internal-error` without text.
+4. **Server persistence contains public/opaque material only.** Registration stores the native
+   public bundle and 16 prekeys; invitation plaintext is never stored; pairing packets remain opaque.
+   A schema-pattern test forbids private/session/plaintext/safety fields and the capture-logger test
+   proves messages and stacks are dropped. `M2Y_SERVER_INVITE_HASH_KEY` is mandatory for durable DBs.
+5. **Automated evidence on 2026-08-25:** frozen pnpm install passed; server format/type/lint/test/build
+   passed at 9 suites / 24 tests; root format/type/lint/dependency/config gates passed and the full
+   client suite passed serially at 29 suites / 215 tests. One parallel root run timed out in two
+   existing UI tests; both passed alone and the subsequent full serial run was green. Physical
+   two-install transport remains section E/G and is not claimed by these server-only tests.
 
 ## E. Pairing application controller and three discovery modes
 
-- [ ] Implement signed `PairingApiClient`, exact JSON/body hashing, timeouts, retries and strict response decoding.
+- [x] Implement signed `PairingApiClient`, exact JSON/body hashing, timeouts, retries and strict response decoding.
 - [ ] Implement foreground-aware cancellable polling with bounded backoff and cursor persistence.
 - [ ] Connect native committed pairing outbox to server delivery/ack without optimistic active state.
 - [ ] Implement M2Y-ID formatting/copy/input and generic lookup failures.
 - [ ] Install SDK-compatible camera/clipboard/SVG dependencies through Expo; implement QR display/scan/deep link and permission-denied fallback.
 - [ ] Implement 8-character handshake-code display/input/countdown and expiry recovery.
 - [ ] Unit/integration test all three methods converge to the same pending request state.
+
+### E1 transport evidence
+
+1. `src/application/pairing/contracts.ts` defines the pure `PairingApi`, signer port, typed public
+   bundles, operation packets, invitations, events and stable result unions. The concrete client and
+   Expo crypto factory remain under `src/data/pairing`; the native adapter implements only the signer
+   port, so controllers/screens do not depend on transport or native modules.
+2. POST bodies are serialized once. SHA-256, canonical request signing and fetch all consume that
+   exact string. Each bounded retry keeps the operation/body but creates a fresh 18-byte nonce,
+   timestamp and P-256 signature; two attempts and 10-second per-attempt timeout are the defaults.
+3. Every server response is decoded from `unknown` with exact keys, version/enums/UUID/M2Y/base64url
+   bounds, active `pairId` invariant and ordered event cursor checks. Known server failures remain
+   fixture-backed values; fetch/native/JSON text is never propagated.
+4. Automated evidence on 2026-08-25: targeted pairing client/decoder/fixture tests passed at 3 suites /
+   14 tests. Full root gates passed at 31 suites / 227 tests and dependency-cruiser reported 131
+   modules / 203 dependencies with no violations; server remained green at 9 suites / 24 tests plus
+   format/type/lint/build.
 
 ## F. Request review, safety number and Figma-aligned UI
 

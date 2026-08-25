@@ -28,6 +28,7 @@ accessors.
 | [State Management](./state-management.md) | Committed workspace session, provider hooks, local UI-state contracts | Active |
 | [Quality Guidelines](./quality-guidelines.md) | SDK 56, config, native build, and quality contracts | Active |
 | [Production Identity](./production-identity.md) | Android identity persistence, Keystore, DTO, and reset contracts | Active |
+| [Pairing API Client](./pairing-client.md) | Exact JSON signing, HTTP retry/timeout and strict server DTO decoding | Active |
 | [Type Safety](./type-safety.md) | Readonly data types, derived unions, port interfaces, strict-flag rules | Active |
 
 ---
