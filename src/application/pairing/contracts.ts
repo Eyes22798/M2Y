@@ -172,6 +172,54 @@ export type PairingEvents = Readonly<{
   nextCursor: number;
 }>;
 
+export const PAIRING_CURSOR_FAILURE_CODES = [
+  'pairing-cursor-invalid',
+  'pairing-cursor-unavailable',
+] as const;
+export type PairingCursorFailureCode = (typeof PAIRING_CURSOR_FAILURE_CODES)[number];
+
+export type PairingCursorReadResult =
+  | Readonly<{ ok: true; cursor: number }>
+  | Readonly<{ ok: false; reason: PairingCursorFailureCode }>;
+
+export type PairingCursorWriteResult =
+  Readonly<{ ok: true }> | Readonly<{ ok: false; reason: PairingCursorFailureCode }>;
+
+export interface PairingCursorStore {
+  readCursor(): Promise<PairingCursorReadResult>;
+  writeCursor(cursor: number): Promise<PairingCursorWriteResult>;
+}
+
+export type PairingEventApplyResult =
+  Readonly<{ ok: true }> | Readonly<{ ok: false; reason: 'pairing-event-apply-failed' }>;
+
+export interface PairingEventConsumer {
+  applyEvents(events: readonly PairingEvent[]): Promise<PairingEventApplyResult>;
+}
+
+export type PairingPollingFailureCode = PairingCursorFailureCode | 'pairing-event-apply-failed';
+
+export type PairingPollingState =
+  | Readonly<{ status: 'stopped' }>
+  | Readonly<{ status: 'initializing' }>
+  | Readonly<{ status: 'paused'; cursor: number }>
+  | Readonly<{ status: 'polling'; cursor: number; consecutiveFailures: number }>
+  | Readonly<{
+      status: 'waiting';
+      cursor: number;
+      consecutiveFailures: number;
+      delayMs: number;
+    }>
+  | Readonly<{ status: 'failed'; code: PairingPollingFailureCode }>;
+
+export interface PairingPollingController {
+  getState(): PairingPollingState;
+  subscribe(listener: () => void): () => void;
+  start(foreground: boolean): Promise<void>;
+  setForeground(foreground: boolean): void;
+  stop(): void;
+}
+
 export interface PairingApi {
   registerIdentity(
     input: IdentityRegistrationRequest,
@@ -186,7 +234,7 @@ export interface PairingApi {
     requestId: string,
     input: PairingPacketRequest,
   ): Promise<PairingApiResult<PairRequestMutation>>;
-  readEvents(afterCursor: number): Promise<PairingApiResult<PairingEvents>>;
+  readEvents(afterCursor: number, signal?: AbortSignal): Promise<PairingApiResult<PairingEvents>>;
   respondToPairRequest(
     requestId: string,
     input: PairingResponseRequest,

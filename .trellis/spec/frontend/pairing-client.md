@@ -21,7 +21,7 @@ PairingApi.replenishPreKeys(input)
 PairingApi.createInvitation(input)
 PairingApi.preparePairRequest(input)
 PairingApi.submitPairRequest(requestId, packet)
-PairingApi.readEvents(afterCursor)
+PairingApi.readEvents(afterCursor, signal?)
 PairingApi.respondToPairRequest(requestId, response)
 PairingApi.verifyPairRequest(requestId, packet)
 PairingApi.cancelPairRequest(requestId, packet)
@@ -100,4 +100,78 @@ const bodyHash = await hashBody(body);
 const signature = await signer.signDeviceRequest(canonical({ bodyHash, ...metadata }));
 const response: unknown = await fetch(url, { body, headers: signedHeaders(signature), method: 'POST' });
 return decodeExactResponse(response);
+```
+
+## 场景：前台短轮询与持久游标
+
+### 1. 范围 / 触发条件
+
+- 修改配对事件轮询、App 前后台生命周期、事件消费顺序、SecureStore 游标或请求取消语义时，
+  必须遵守本场景。
+- 应用层拥有轮询状态机与端口；数据层实现 HTTP 取消和游标存储；页面不得自行维护定时器或游标。
+
+### 2. 签名
+
+```text
+PairingApi.readEvents(afterCursor, signal?) -> PairingApiResult<PairingEvents>
+PairingEventConsumer.applyEvents(events) -> ok | pairing-event-apply-failed
+PairingCursorStore.readCursor() -> cursor | pairing-cursor-*
+PairingCursorStore.writeCursor(cursor) -> ok | pairing-cursor-*
+PairingPollingController.start(foreground) / setForeground(foreground) / stop()
+```
+
+### 3. 合同
+
+- 首次无游标时从 `0` 开始；游标必须是十进制非负安全整数，SecureStore 只保存游标本身。
+- 每批事件必须按“读取 → 应用全部事件 → 持久化 `nextCursor` → 推进内存游标”的顺序处理。
+- 进入后台或停止时必须取消 HTTP 与退避等待；回到前台后从最近的已提交游标恢复。
+- 任一时刻最多存在一个轮询周期。快速后台→前台切换必须等旧周期退出后再启动新周期。
+- 网络失败默认按 1/2/4/8 秒退避并封顶；成功后重置失败次数，1.5 秒后继续轮询。
+- 外部取消不得继续 HTTP 重试。超时与普通网络失败仍由 transport 的有界重试规则处理。
+- 游标写入失败可能使已应用事件在下次启动时重放，因此事件消费者必须按游标或 `eventId` 幂等。
+
+### 4. 验证与错误矩阵
+
+| 条件 | 结果 |
+|---|---|
+| SecureStore 无记录 | `cursor = 0` |
+| 游标不是非负安全整数 | `failed/pairing-cursor-invalid`；不发请求 |
+| SecureStore 不可用或抛错 | `failed/pairing-cursor-unavailable`；不暴露原生文本 |
+| 事件应用失败 | `failed/pairing-event-apply-failed`；不写游标 |
+| 游标写入失败 | 稳定失败；不得推进内存游标 |
+| App 进入后台或停止 | 取消在途工作并暂停/停止；不计网络失败 |
+| 网络或超时失败 | 保持原游标并按封顶退避重试 |
+
+### 5. 正常 / 基线 / 错误案例
+
+- 正常：游标 7 读取到事件 8，事件成功应用并持久化 8，下一轮从 8 开始。
+- 基线：服务端返回空事件且 `nextCursor` 不变，仍提交该游标并按成功间隔继续。
+- 错误：先写游标 8 再应用事件；进程若在两步之间终止，会永久跳过未应用事件。
+- 错误：每次前台回调都直接启动异步轮询；快速切换可能让两个周期并发消费同一批事件。
+
+### 6. 必需测试
+
+- 断言事件成功应用后才调用 `writeCursor`，应用失败时不写游标。
+- 覆盖损坏游标、SecureStore 读取/写入异常和非法写入。
+- 覆盖后台取消在途 HTTP、回前台从原游标恢复、停止后不再重试。
+- 用可控的事件应用 Promise 回归快速后台→前台竞态，断言 API 周期不重叠。
+- 连续制造三次网络失败，断言游标不变且退避达到上限后不再增长。
+- 外部取消 transport 请求后，断言只有一次请求尝试。
+
+### 7. 错误与正确示例
+
+#### 错误
+
+```typescript
+await cursorStore.writeCursor(batch.nextCursor);
+await eventConsumer.applyEvents(batch.events);
+```
+
+#### 正确
+
+```typescript
+const applied = await eventConsumer.applyEvents(batch.events);
+if (!applied.ok) return fail(applied.reason);
+const persisted = await cursorStore.writeCursor(batch.nextCursor);
+if (!persisted.ok) return fail(persisted.reason);
 ```

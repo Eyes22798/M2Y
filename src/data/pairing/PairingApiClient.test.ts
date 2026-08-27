@@ -198,6 +198,36 @@ describe('PairingApiClient canonical requests', () => {
     expect(attempts).toBe(2);
   });
 
+  it('外部取消会终止事件请求且不再发起下一次重试', async () => {
+    let attempts = 0;
+    let markStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const client = createClient({
+      fetch: (_url, request) => {
+        attempts += 1;
+        markStarted();
+        return new Promise((_resolve, reject) => {
+          request.signal.addEventListener('abort', () => reject(new Error('AbortError')), {
+            once: true,
+          });
+        });
+      },
+    });
+    const controller = new AbortController();
+
+    const pending = client.readEvents(7, controller.signal);
+    await started;
+    controller.abort();
+
+    await expect(pending).resolves.toEqual({
+      ok: false,
+      failure: { code: 'pairing-network-unavailable', kind: 'client' },
+    });
+    expect(attempts).toBe(1);
+  });
+
   it('fails closed when the native signer belongs to another device', async () => {
     let fetchCalled = false;
     const fetch: PairingFetch = async () => {

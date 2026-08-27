@@ -78,7 +78,7 @@
 ## E. Pairing application controller and three discovery modes
 
 - [x] Implement signed `PairingApiClient`, exact JSON/body hashing, timeouts, retries and strict response decoding.
-- [ ] Implement foreground-aware cancellable polling with bounded backoff and cursor persistence.
+- [x] Implement foreground-aware cancellable polling with bounded backoff and cursor persistence.
 - [ ] Connect native committed pairing outbox to server delivery/ack without optimistic active state.
 - [ ] Implement M2Y-ID formatting/copy/input and generic lookup failures.
 - [ ] Install SDK-compatible camera/clipboard/SVG dependencies through Expo; implement QR display/scan/deep link and permission-denied fallback.
@@ -101,6 +101,19 @@
    14 tests. Full root gates passed at 31 suites / 227 tests and dependency-cruiser reported 131
    modules / 203 dependencies with no violations; server remained green at 9 suites / 24 tests plus
    format/type/lint/build.
+
+### E2 轮询证据
+
+1. `DefaultPairingPollingController` 仅在前台运行；进入后台或停止时同时取消在途 HTTP 与等待，
+   快速后台→前台切换通过 generation + 单飞约束串行化，不允许旧事件提交与新轮询重叠。
+2. 服务端事件必须先由 `PairingEventConsumer` 成功应用，再写入 `PairingCursorStore` 并推进内存游标；
+   应用或持久化失败均 fail-closed。由于写游标失败可能导致重放，E3 消费器必须以事件游标/事件 ID 幂等。
+3. `ExpoPairingCursorStore` 只在 SecureStore 中保存非负安全整数游标；缺失值从 0 开始，损坏值、
+   原生异常和不可用状态统一映射为稳定失败码，不保存事件、packet 或安全号码。
+4. `PairingApiClient.readEvents` 接受外部 `AbortSignal`；外部取消立即终止当前请求且禁止后续重试，
+   超时仍保留原有两次有界重试。网络失败采用 1/2/4/8 秒封顶退避，成功轮询间隔为 1.5 秒。
+5. 2026-08-27 自动化证据：轮询/游标/API 取消定向测试 3 suites / 21 tests；根目录完整测试
+   33 suites / 242 tests；format/type/lint/dependency/config 与 `git diff --check` 全部通过。
 
 ## F. Request review, safety number and Figma-aligned UI
 

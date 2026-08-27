@@ -111,12 +111,14 @@ export class PairingApiClient implements PairingApi {
     );
   }
 
-  readEvents(afterCursor: number): Promise<PairingApiResult<PairingEvents>> {
+  readEvents(afterCursor: number, signal?: AbortSignal): Promise<PairingApiResult<PairingEvents>> {
     return this.send(
       'GET',
       `/v1/pair/events?after=${encodeURIComponent(String(afterCursor))}`,
       undefined,
       decodePairingEvents,
+      undefined,
+      signal,
     );
   }
 
@@ -168,7 +170,10 @@ export class PairingApiClient implements PairingApi {
     body: unknown,
     decode: JsonDecoder<T>,
     expectedDeviceId?: string,
+    externalSignal?: AbortSignal,
   ): Promise<PairingApiResult<T>> {
+    if (externalSignal?.aborted) return clientFailure('pairing-network-unavailable');
+
     const bodyText = body === undefined ? '' : JSON.stringify(body);
     let bodyHash: string;
     try {
@@ -180,6 +185,8 @@ export class PairingApiClient implements PairingApi {
     let lastTransportCode: 'pairing-network-unavailable' | 'pairing-timeout' =
       'pairing-network-unavailable';
     for (let attempt = 0; attempt < this.maximumAttempts; attempt += 1) {
+      if (externalSignal?.aborted) return clientFailure('pairing-network-unavailable');
+
       let nonce: string;
       let signature;
       const timestamp = this.dependencies.nowMs();
@@ -196,7 +203,14 @@ export class PairingApiClient implements PairingApi {
       }
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+      let timedOut = false;
+      const abortFromExternal = () => controller.abort();
+      externalSignal?.addEventListener('abort', abortFromExternal, { once: true });
+      if (externalSignal?.aborted) abortFromExternal();
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, this.timeoutMs);
       let response: PairingHttpResponse;
       try {
         response = await this.dependencies.fetch(`${this.dependencies.baseUrl}${requestTarget}`, {
@@ -213,13 +227,14 @@ export class PairingApiClient implements PairingApi {
           signal: controller.signal,
         });
       } catch {
-        lastTransportCode = controller.signal.aborted
-          ? 'pairing-timeout'
-          : 'pairing-network-unavailable';
-        clearTimeout(timeout);
+        if (externalSignal?.aborted) return clientFailure('pairing-network-unavailable');
+        lastTransportCode = timedOut ? 'pairing-timeout' : 'pairing-network-unavailable';
         continue;
+      } finally {
+        clearTimeout(timeout);
+        externalSignal?.removeEventListener('abort', abortFromExternal);
       }
-      clearTimeout(timeout);
+      if (externalSignal?.aborted) return clientFailure('pairing-network-unavailable');
 
       let responseBody: unknown;
       try {
