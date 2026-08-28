@@ -6,11 +6,13 @@ import {
   inspectProductionIdentity as inspectNativeProductionIdentity,
   listPairingOutbox as listNativePairingOutbox,
   prepareIdentityRegistration as prepareNativeIdentityRegistration,
+  preparePairingPacket as prepareNativePairingPacket,
   resetProductionIdentity as resetNativeProductionIdentity,
   respondToPairingRequest as respondToNativePairingRequest,
   signDeviceRequest as signNativeDeviceRequest,
   sweepPairingState as sweepNativePairingState,
 } from '../../../modules/m2y-crypto';
+import type { LeasedPublicBundle } from '@/application/pairing/contracts';
 
 import {
   decodeProductionPairingAcknowledgement,
@@ -18,6 +20,7 @@ import {
   decodeProductionPairingConfirmation,
   decodeProductionPairingDecision,
   decodeProductionPairingOutbox,
+  decodeProductionPreparedPairingPacket,
   decodeProductionPairingSweep,
   type ProductionPairingAcknowledgement,
   type ProductionPairingAction,
@@ -25,6 +28,7 @@ import {
   type ProductionPairingConfirmation,
   type ProductionPairingDecision,
   type ProductionPairingOutbox,
+  type ProductionPreparedPairingPacket,
   type ProductionPairingSweep,
 } from './M2YCryptoPairingContract';
 import {
@@ -46,6 +50,7 @@ export type {
   ProductionPairingDecision,
   ProductionPairingOutbox,
   ProductionPairingOutboxItem,
+  ProductionPreparedPairingPacket,
   ProductionPairingSweep,
 } from './M2YCryptoPairingContract';
 export type {
@@ -109,12 +114,21 @@ export function resetM2YProductionIdentity(): Promise<ProductionIdentityReset> {
   return callNative(resetNativeProductionIdentity, decodeProductionIdentityReset);
 }
 
+export function prepareM2YPairingPacket(
+  requestId: string,
+  expiresAtMs: number,
+  targetBundle: LeasedPublicBundle,
+): Promise<ProductionPreparedPairingPacket> {
+  const targetBundleJson = JSON.stringify(targetBundle);
+  return callNative(
+    () => prepareNativePairingPacket(requestId, expiresAtMs, targetBundleJson),
+    decodeProductionPreparedPairingPacket,
+  );
+}
+
 /**
- * The pairing calls below have no application-layer port yet, for the same reason
- * `commitM2YIdentityRegistration` and `signM2YDeviceRequest` do not: they only become reachable once
- * the pairing API client exists to carry the queued packets. Staging an inbound candidate is not
- * exposed at all — opening a peer packet needs the libsignal session that arrives with the protocol
- * engine, so the native module keeps that entry point package-private.
+ * 以下入口服务于后续的接受、安全号码确认与激活流程。入站候选暂不从 JS 直接落库：必须先由 native
+ * libsignal 会话解密并校验 peer identity，不能让页面把未经验证的 transport 字段写进信任状态。
  */
 export function respondToM2YPairingRequest(
   requestId: string,

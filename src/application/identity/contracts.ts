@@ -1,38 +1,99 @@
-import type { IdentityRelationshipState, IdentitySummary } from '@/domain/identity/types';
+import type {
+  IdentityRelationshipState,
+  IdentitySummary,
+  PairingRequestSummary,
+} from '@/domain/identity/types';
+import type {
+  IdentityRegistrationRequest,
+  LeasedPublicBundle,
+  PairingApi,
+} from '@/application/pairing/contracts';
 
 /**
- * What the production identity store reports about this device. The three cases mirror the native
- * inspection contract, minus the storage bookkeeping (`revision`, `schemaVersion`) that no
- * application decision depends on.
+ * 生产身份存储对本机状态的最小投影。应用层只保留决策所需字段，不接收 native 的 revision、
+ * schemaVersion 或任何密钥材料；已获服务端回执的首包会恢复为 outgoingPending。
  */
 export type IdentityInspection =
   | Readonly<{ kind: 'absent' }>
   | Readonly<{ kind: 'pendingRegistration'; identity: IdentitySummary; operationId: string }>
-  | Readonly<{ kind: 'unpaired'; identity: IdentitySummary }>;
+  | Readonly<{ kind: 'unpaired'; identity: IdentitySummary }>
+  | Readonly<{
+      kind: 'outgoingPending';
+      identity: IdentitySummary;
+      request: PairingRequestSummary;
+    }>;
 
 /**
- * The part of a prepared registration the UI may see. The public key bundle stays inside the native
- * outbox: only the pairing API client will ever need it, and `prepareIdentity` is idempotent, so
- * dropping it here loses nothing that cannot be re-read.
+ * 应用层只暂存本次注册所需的公开材料。私钥仍只存在于 native store；控制器必须把公开注册包
+ * 提交给服务端并回写真实 receipt，才能把状态发布为 `unpaired`。
  */
-export type IdentityDraft = Readonly<{ identity: IdentitySummary; operationId: string }>;
+export type IdentityDraft = Readonly<{
+  identity: IdentitySummary;
+  operationId: string;
+  registration: IdentityRegistrationRequest;
+}>;
 
-/**
- * Every method rejects instead of returning a failure union: the native module reports one opaque
- * failure code, so a richer result type here would be invented precision. The controller maps a
- * rejection onto a fail-closed state.
- */
+/** native 已同事务提交 PQXDH 会话与首包 outbox 后，应用层可以安全传输的公开投影。 */
+export type PreparedPairingPacket = Readonly<{
+  expiresAtMs: number;
+  operationId: string;
+  packet: string;
+  requestId: string;
+  targetDeviceId: string;
+  targetM2yId: string;
+  targetStableIdentityId: string;
+}>;
+
+/** 尚未获得服务端回执的首包；重启后必须原样重传，不能重新加密或更换 operation。 */
+export type PendingPairingPacket = PreparedPairingPacket &
+  Readonly<{
+    createdAtMs: number;
+    retryCount: number;
+  }>;
+
+export type StartM2yPairingResult =
+  | Readonly<{ ok: true }>
+  | Readonly<{
+      ok: false;
+      reason:
+        | 'm2y-id-invalid'
+        | 'pairing-operation-busy'
+        | 'pairing-target-unavailable'
+        | 'pairing-transport-unavailable'
+        | 'self-pairing-not-allowed';
+    }>;
+
+export interface OperationIdGenerator {
+  createOperationId(): string;
+}
+
+/** native 拒绝统一由 controller 映射为 fail-closed 状态，端口不虚构更细的失败精度。 */
 export interface ProductionIdentityPort {
   inspectIdentity(): Promise<IdentityInspection>;
   prepareIdentity(displayName: string | null): Promise<IdentityDraft>;
+  commitRegistration(operationId: string, receiptId: string): Promise<IdentityInspection>;
+  preparePairingPacket(
+    requestId: string,
+    expiresAtMs: number,
+    targetBundle: LeasedPublicBundle,
+  ): Promise<PreparedPairingPacket>;
+  listPendingPairingPackets(): Promise<readonly PendingPairingPacket[]>;
+  acknowledgePairingPacket(operationId: string, receiptId: string): Promise<void>;
   resetIdentity(): Promise<void>;
 }
+
+export type IdentityControllerDependencies = Readonly<{
+  identityStore: ProductionIdentityPort;
+  operationIdGenerator?: OperationIdGenerator;
+  pairingApi?: PairingApi;
+}>;
 
 export interface IdentityRelationshipController {
   getState(): IdentityRelationshipState;
   subscribe(listener: () => void): () => void;
   inspect(): Promise<void>;
   createIdentity(displayName: string | null): Promise<void>;
+  startM2yPairing(m2yId: string): Promise<StartM2yPairingResult>;
   resetLocalData(): Promise<void>;
   retry(): Promise<void>;
 }

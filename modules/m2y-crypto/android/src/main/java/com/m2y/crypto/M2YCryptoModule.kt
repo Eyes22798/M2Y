@@ -76,6 +76,14 @@ class M2YCryptoModule : Module() {
         runProduction { it.prepareIdentityRegistration(displayName) }
       }
 
+      AsyncFunction("preparePairingPacket") {
+          requestId: String,
+          expiresAtMs: Long,
+          targetBundleJson: String,
+        ->
+        runProduction { it.preparePairingPacket(requestId, expiresAtMs, targetBundleJson) }
+      }
+
       AsyncFunction("commitIdentityRegistration") { operationId: String, receiptId: String ->
         runProduction { it.commitIdentityRegistration(operationId, receiptId) }
       }

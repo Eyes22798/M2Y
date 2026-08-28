@@ -36,6 +36,12 @@ export function identityRelationshipReducer(
           };
         case 'inspectUnpaired':
           return { status: 'unpaired', identity: event.identity };
+        case 'inspectOutgoingPending':
+          return {
+            status: 'outgoingPending',
+            identity: event.identity,
+            request: event.request,
+          };
         default:
           return state;
       }

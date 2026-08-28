@@ -9,6 +9,7 @@ export {
   inspectProductionIdentity,
   listPairingOutbox,
   prepareIdentityRegistration,
+  preparePairingPacket,
   resetProductionIdentity,
   respondToPairingRequest,
   runFreshAcceptance,

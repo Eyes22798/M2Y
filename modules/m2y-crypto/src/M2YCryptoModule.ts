@@ -40,6 +40,14 @@ export function prepareIdentityRegistration(displayName: string | null): Promise
   return nativeModule.prepareIdentityRegistration(displayName);
 }
 
+export function preparePairingPacket(
+  requestId: string,
+  expiresAtMs: number,
+  targetBundleJson: string,
+): Promise<unknown> {
+  return nativeModule.preparePairingPacket(requestId, expiresAtMs, targetBundleJson);
+}
+
 export function commitIdentityRegistration(
   operationId: string,
   receiptId: string,

@@ -39,7 +39,9 @@
 3. **The outbox acknowledgement receipt is validated but not stored.** Schema v1 has no column for it, and adding one would need a migration whose `onUpgrade` currently throws. `ackPairingOutbox` therefore treats the receipt as proof of delivery (format-checked, `pairing-outbox-receipt-invalid` otherwise) rather than a persisted fact — the same choice `commitIdentityRegistration` already makes.
 4. **Exactly-once intents rest on outbox rows, not on a unique index.** `pairing_outbox` has no unique constraint on `(request_id, packet_type)`; `committedIntentId` enforces it inside the same transaction and matches acknowledged rows too, so repeating a decision after its packet was delivered returns the first operation id instead of queueing a second packet. Both outbox queries order by `created_at_ms ASC, rowid ASC` so the transport gets a real insertion order even for rows written in the same millisecond.
 5. **The pairing instrumentation tests now run, on an emulator only.** Resolved on 2026-08-25: `emulator` and `system-images;android-36;aosp_atd;arm64-v8a` were installed, AVD `m2y-atd-36` created, and `:m2y-crypto:connectedDebugAndroidTest` executed **21/21 green with 0 failures and 0 skips** — all 12 of `PairingTransactionStoreInstrumentedTest`, plus 5 `AndroidKeystoreCheckpointInstrumentedTest` and 3 `ProductionIdentityManagerInstrumentedTest`. The JVM half is separately green (`pnpm test:native:crypto`: 6 suites / 51 tests; pass `--rerun-tasks`, because Gradle reports `BUILD SUCCESSFUL` with exit 0 when it skips the task as `UP-TO-DATE`). What G6 still owes is unchanged: no CI job runs this suite, and nothing has been executed on a physical ARM64 device.
-6. **The six new pairing calls stop at the native adapter, with no application-layer port.** `M2YCryptoProductionAdapter` decodes them through `M2YCryptoPairingContract`, but no `ProductionIdentityPort` method is added: nothing in `src/application` can act on a pairing decision until the `PairingApiClient` of section E exists to deliver the queued packets. This follows the existing precedent for `commitIdentityRegistration` and `signDeviceRequest`, which are also adapter-only for the same reason.
+6. **原有六个 decision 入口仍未全部接到应用层。** E3a 已把首包 prepare、outbox 恢复和 ACK 接入
+   `ProductionIdentityPort`；接受/拒绝、确认安全号码与激活入口仍留在 native adapter，等待 E3b/F
+   从已解密的入站 candidate 纵向接通，页面不能直接注入 peer identity。
 
 ## D. Pairing service API and signed transport
 
@@ -77,10 +79,27 @@
 
 ## E. Pairing application controller and three discovery modes
 
+### 纵向闭环执行约束（2026-08-27）
+
+用户确认停止横向扩展基础设施。后续严格按一个可观察的 M2Y-ID 闭环推进：
+
+1. 本机身份生成后立即完成签名注册、receipt 回写，并显示服务端已登记的真实 M2Y-ID。
+2. M2Y-ID 输入只调用共同的 prepare/transcript；native 必须先提交真实加密 packet/outbox，
+   服务端 submit 成功并 ACK 后才进入 `outgoingPending`。
+3. 目标端 polling 事件必须由 native 解密并提交 candidate 后，才显示 `incomingReview`。
+4. 接受/拒绝、安全号码和双方确认页面紧接这条链实现；两安装 M2Y-ID Gate 3 通过前，
+   不增加通用 sync、推送、附件、Activity、Timeline 或与本闭环无关的基础设施。
+5. QR 和握手码仅在 M2Y-ID 闭环通过后作为 discovery adapter 接入同一状态机，不另建协议链。
+
+当前切片状态：身份生成 → 签名注册 → native receipt 提交，以及 M2Y-ID 输入 → 服务端 prepare →
+native PQXDH 首包/outbox 同事务提交 → 服务端 submit → native ACK → `outgoingPending` 已接线；
+对端 polling packet 的 native 解密/candidate 提交仍未完成，因此 E3b/F/G 不提前勾选。
+
 - [x] Implement signed `PairingApiClient`, exact JSON/body hashing, timeouts, retries and strict response decoding.
 - [x] Implement foreground-aware cancellable polling with bounded backoff and cursor persistence.
-- [ ] Connect native committed pairing outbox to server delivery/ack without optimistic active state.
-- [ ] Implement M2Y-ID formatting/copy/input and generic lookup failures.
+- [x] 将 M2Y-ID native 首包 outbox 接到服务端 delivery/ack，不发布乐观状态。
+- [x] 实现严格的 M2Y-ID 输入归一化与通用查询失败提示。
+- [ ] 为本机格式化 M2Y-ID 增加安全的复制入口。
 - [ ] Install SDK-compatible camera/clipboard/SVG dependencies through Expo; implement QR display/scan/deep link and permission-denied fallback.
 - [ ] Implement 8-character handshake-code display/input/countdown and expiry recovery.
 - [ ] Unit/integration test all three methods converge to the same pending request state.
@@ -114,6 +133,25 @@
    超时仍保留原有两次有界重试。网络失败采用 1/2/4/8 秒封顶退避，成功轮询间隔为 1.5 秒。
 5. 2026-08-27 自动化证据：轮询/游标/API 取消定向测试 3 suites / 21 tests；根目录完整测试
    33 suites / 242 tests；format/type/lint/dependency/config 与 `git diff --check` 全部通过。
+
+### E3a M2Y-ID 发起端闭环证据
+
+1. 页面只接受严格格式的 M2Y-ID，并统一处理本机 ID、目标不存在/无 prekey/已有关系与网络失败；
+   controller 会校验服务端 target bundle、native prepared packet 和 submit receipt 的 request、设备、
+   stable identity、M2Y-ID、operation 与 expiry 绑定，任何不一致都 fail closed。
+2. `ProductionSignalProtocolStore` 把 libsignal identity/session/prekey/signed-prekey/Kyber/sender-key
+   记录加密保存到 production `secret_records`。`ProductionPairingProtocolEngine` 在同一 SQLite 事务中
+   完成 PQXDH SessionBuilder、PREKEY 首包和加密 outbox；重试返回同一 operation 与密文。
+3. submit 成功前不发布 `outgoingPending`。网络中断后，retry/重启会从 native outbox 原样重传；
+   服务端返回同 request/operation 的 pending receipt 且 native ACK 成功后，状态机才展示等待对方确认。
+4. 2026-08-28 自动化证据：根目录完整 Jest 34 suites / 264 tests；typecheck、lint、format、
+   dependency-cruiser 全绿；native JVM `--rerun-tasks` 8 suites / 56 tests、0 failures/errors，
+   androidTest Java 编译通过。
+   ARM64 debug APK 构建成功，`native-code: 'arm64-v8a'`，110,080,952 bytes，SHA-256
+   `770B2461D74D8369DE52DFD116EF519C6CD8A26F824660331E5F3E1645A91CFD`。
+5. 真机运行证据仍未完成：本轮 ADB daemon 启动后设备列表为空，所以新增的
+   `pqxdhFirstPacketOutboxAndAcknowledgedInspectionSurviveRestart` 仅完成 androidTest 编译，不能声称
+   Android Keystore/SQLite/PQXDH 在物理设备上通过；设备重新连接后应优先执行该 suite。
 
 ## F. Request review, safety number and Figma-aligned UI
 

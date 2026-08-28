@@ -54,6 +54,7 @@ function createStore(initial: IdentityRelationshipState) {
     createIdentity: jest.fn(async () => undefined),
     resetLocalData: jest.fn(async () => undefined),
     retry: jest.fn(async () => undefined),
+    startM2yPairing: jest.fn(async () => ({ ok: true as const })),
   };
   return {
     controller,

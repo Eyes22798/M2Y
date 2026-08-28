@@ -39,8 +39,23 @@ export type ProductionIdentityUnpaired = ProductionIdentitySummary &
     status: 'unpaired';
   }>;
 
+export type ProductionIdentityOutgoingPending = ProductionIdentitySummary &
+  Readonly<{
+    expiresAtMs: number;
+    method: 'm2y-id';
+    registeredAtMs: number;
+    requestId: string;
+    status: 'outgoingPending';
+    targetDeviceId: string;
+    targetM2yId: string;
+    targetStableIdentityId: string;
+  }>;
+
 export type ProductionIdentityInspection =
-  ProductionIdentityAbsent | ProductionIdentityPendingRegistration | ProductionIdentityUnpaired;
+  | ProductionIdentityAbsent
+  | ProductionIdentityPendingRegistration
+  | ProductionIdentityUnpaired
+  | ProductionIdentityOutgoingPending;
 
 export type ProductionOneTimePreKey = Readonly<{
   id: number;
@@ -145,6 +160,41 @@ export function decodeProductionIdentityInspection(value: unknown): ProductionId
     isEpochMs(value.registeredAtMs)
   ) {
     return { ...summary, registeredAtMs: value.registeredAtMs, status: 'unpaired' };
+  }
+  if (
+    value.status === 'outgoingPending' &&
+    hasExactNativeKeys(
+      value,
+      identityKeys(value, [
+        'expiresAtMs',
+        'method',
+        'registeredAtMs',
+        'requestId',
+        'status',
+        'targetDeviceId',
+        'targetM2yId',
+        'targetStableIdentityId',
+      ]),
+    ) &&
+    value.method === 'm2y-id' &&
+    isEpochMs(value.registeredAtMs) &&
+    isEpochMs(value.expiresAtMs) &&
+    isUuidV4(value.requestId) &&
+    isUuidV4(value.targetDeviceId) &&
+    isUuidV4(value.targetStableIdentityId) &&
+    isM2yId(value.targetM2yId)
+  ) {
+    return {
+      ...summary,
+      expiresAtMs: value.expiresAtMs,
+      method: 'm2y-id',
+      registeredAtMs: value.registeredAtMs,
+      requestId: value.requestId,
+      status: 'outgoingPending',
+      targetDeviceId: value.targetDeviceId,
+      targetM2yId: value.targetM2yId,
+      targetStableIdentityId: value.targetStableIdentityId,
+    };
   }
   return invalidNativeResponse();
 }

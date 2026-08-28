@@ -1,4 +1,10 @@
 import type { IdentitySummary } from '@/domain/identity/types';
+import type {
+  IdentityRegistrationRequest,
+  IdentityRegistrationReceipt,
+  PairingApi,
+  PairingApiResult,
+} from '@/application/pairing/contracts';
 
 import type { IdentityInspection, ProductionIdentityPort } from './contracts';
 import { DefaultIdentityRelationshipController } from './controller';
@@ -8,30 +14,89 @@ const identity: IdentitySummary = {
   m2yId: 'M2Y-2345-6789-ABCD-EFGH',
   stableIdentityId: '839c065c-b7ad-43ea-99ba-a3338037178a',
 };
+const operationId = '2f2f6b31-1f4d-4b0b-9d0f-1a7e4c9a55f2';
+const pairingOperationId = 'e1c09d39-652c-4d4c-afd6-a5333d366baa';
+const requestId = '9d923119-0e58-4cfa-a191-5397585790bc';
+const targetDeviceId = 'b64a01a1-546a-47f8-8920-52e9444fe850';
+const targetStableIdentityId = '59e5c303-bba8-46d0-a19c-26a6514938a7';
+const targetM2yId = 'M2Y-JKLM-NPQR-STUV-WXYZ';
+const expiresAtMs = 1_800_000_600_000;
+const registration: IdentityRegistrationRequest = {
+  authPublicKey: 'a'.repeat(64),
+  deviceId: identity.deviceId,
+  identityPublicKey: 'b'.repeat(32),
+  kyberPreKeyId: 3,
+  kyberPreKeyPublic: 'c'.repeat(256),
+  kyberPreKeySignature: 'd'.repeat(32),
+  m2yId: identity.m2yId,
+  oneTimePreKeys: Array.from({ length: 16 }, (_, index) => ({
+    id: index + 10,
+    publicKey: 'e'.repeat(32),
+  })),
+  operationId,
+  registrationId: 1,
+  schemaVersion: 1,
+  signedPreKeyId: 2,
+  signedPreKeyPublic: 'f'.repeat(32),
+  signedPreKeySignature: 'g'.repeat(32),
+  stableIdentityId: identity.stableIdentityId,
+};
 
 function createPort(overrides: Partial<ProductionIdentityPort> = {}) {
   return {
+    acknowledgePairingPacket: jest.fn(async () => undefined),
+    commitRegistration: jest.fn(async () => ({ kind: 'unpaired', identity }) as const),
     inspectIdentity: jest.fn(async (): Promise<IdentityInspection> => ({ kind: 'absent' })),
-    prepareIdentity: jest.fn(async () => ({ identity, operationId: 'operation-1' })),
+    listPendingPairingPackets: jest.fn(async () => []),
+    prepareIdentity: jest.fn(async () => ({ identity, operationId, registration })),
+    preparePairingPacket: jest.fn(async () => pairingPacket()),
     resetIdentity: jest.fn(async () => undefined),
     ...overrides,
   } satisfies ProductionIdentityPort;
 }
 
-function createController(port: ProductionIdentityPort) {
-  return new DefaultIdentityRelationshipController({ identityStore: port });
+function createController(port: ProductionIdentityPort, pairingApi?: PairingApi) {
+  return new DefaultIdentityRelationshipController({
+    identityStore: port,
+    ...(pairingApi
+      ? { operationIdGenerator: { createOperationId: () => pairingOperationId } }
+      : {}),
+    ...(pairingApi ? { pairingApi } : {}),
+  });
 }
 
 describe('DefaultIdentityRelationshipController', () => {
   it.each([
     { expected: { status: 'needsIdentity' }, inspection: { kind: 'absent' } as const },
     {
-      expected: { status: 'registering', identity, operationId: 'operation-1' },
-      inspection: { kind: 'pendingRegistration', identity, operationId: 'operation-1' } as const,
+      expected: { status: 'registering', identity, operationId },
+      inspection: { kind: 'pendingRegistration', identity, operationId } as const,
     },
     {
       expected: { status: 'unpaired', identity },
       inspection: { kind: 'unpaired', identity } as const,
+    },
+    {
+      expected: {
+        status: 'outgoingPending',
+        identity,
+        request: {
+          expiresAtMs,
+          method: 'm2y-id',
+          peer: { m2yId: targetM2yId, routeId: targetDeviceId },
+          requestId,
+        },
+      },
+      inspection: {
+        kind: 'outgoingPending',
+        identity,
+        request: {
+          expiresAtMs,
+          method: 'm2y-id',
+          peer: { m2yId: targetM2yId, routeId: targetDeviceId },
+          requestId,
+        },
+      } as const,
     },
   ])('reports the stored identity as $inspection.kind', async ({ expected, inspection }) => {
     const controller = createController(createPort({ inspectIdentity: async () => inspection }));
@@ -72,9 +137,89 @@ describe('DefaultIdentityRelationshipController', () => {
     expect(controller.getState()).toEqual({
       status: 'registering',
       identity,
-      operationId: 'operation-1',
+      operationId,
     });
     expect(seen).toEqual(['inspecting', 'needsIdentity', 'creatingIdentity', 'registering']);
+  });
+
+  it('配置真实端点时完成服务端注册并提交 native receipt', async () => {
+    const port = createPort();
+    const api = createPairingApi();
+    const controller = createController(port, api);
+
+    await controller.inspect();
+    await controller.createIdentity('用户');
+
+    expect(api.registerIdentity).toHaveBeenCalledWith(registration);
+    expect(port.commitRegistration).toHaveBeenCalledWith(operationId, 'receipt-registered');
+    expect(controller.getState()).toEqual({ status: 'unpaired', identity });
+  });
+
+  it('重启发现待注册身份时复用原 operation 完成注册', async () => {
+    const port = createPort({
+      inspectIdentity: async () => ({ kind: 'pendingRegistration', identity, operationId }),
+    });
+    const api = createPairingApi();
+    const controller = createController(port, api);
+
+    await controller.inspect();
+
+    expect(port.prepareIdentity).toHaveBeenCalledWith(null);
+    expect(api.registerIdentity).toHaveBeenCalledWith(registration);
+    expect(controller.getState()).toEqual({ status: 'unpaired', identity });
+  });
+
+  it('网络失败不提交 receipt，显式重试后从 native 待办恢复', async () => {
+    const port = createPort({
+      inspectIdentity: jest
+        .fn<ReturnType<ProductionIdentityPort['inspectIdentity']>, []>()
+        .mockResolvedValueOnce({ kind: 'absent' })
+        .mockResolvedValue({ kind: 'pendingRegistration', identity, operationId }),
+    });
+    const api = createPairingApi();
+    api.registerIdentity
+      .mockResolvedValueOnce({
+        ok: false,
+        failure: { kind: 'client', code: 'pairing-network-unavailable' },
+      })
+      .mockResolvedValueOnce(registrationSuccess());
+    const controller = createController(port, api);
+
+    await controller.inspect();
+    await controller.createIdentity(null);
+    expect(controller.getState()).toEqual({
+      status: 'networkFailed',
+      identity,
+      retryFrom: 'registering',
+    });
+    expect(port.commitRegistration).not.toHaveBeenCalled();
+
+    await controller.retry();
+
+    expect(api.registerIdentity).toHaveBeenCalledTimes(2);
+    expect(controller.getState()).toEqual({ status: 'unpaired', identity });
+  });
+
+  it('拒绝与本机身份不匹配的服务端 receipt', async () => {
+    const port = createPort();
+    const api = createPairingApi();
+    api.registerIdentity.mockResolvedValueOnce({
+      ...registrationSuccess(),
+      value: {
+        ...registrationSuccess().value,
+        m2yId: 'M2Y-2345-6789-ABCD-EFGJ',
+      },
+    });
+    const controller = createController(port, api);
+
+    await controller.inspect();
+    await controller.createIdentity(null);
+
+    expect(port.commitRegistration).not.toHaveBeenCalled();
+    expect(controller.getState()).toEqual({
+      status: 'recoveryRequired',
+      code: 'identity-registration-receipt-invalid',
+    });
   });
 
   it('ignores identity creation once an identity already exists', async () => {
@@ -133,7 +278,15 @@ describe('DefaultIdentityRelationshipController', () => {
 
     expect(port.resetIdentity).toHaveBeenCalledTimes(1);
     expect(controller.getState()).toEqual({ status: 'needsIdentity' });
-    expect(Object.keys(port)).toEqual(['inspectIdentity', 'prepareIdentity', 'resetIdentity']);
+    expect(Object.keys(port)).toEqual([
+      'acknowledgePairingPacket',
+      'commitRegistration',
+      'inspectIdentity',
+      'listPendingPairingPackets',
+      'prepareIdentity',
+      'preparePairingPacket',
+      'resetIdentity',
+    ]);
   });
 
   it('requires recovery when the reset itself fails', async () => {
@@ -171,4 +324,202 @@ describe('DefaultIdentityRelationshipController', () => {
 
     expect(controller.getState()).toEqual({ status: 'unpaired', identity });
   });
+
+  it('从用户输入的 M2Y-ID 生成原生密文、提交并等待对方确认', async () => {
+    const port = createPort({ inspectIdentity: async () => ({ kind: 'unpaired', identity }) });
+    const api = createPairingApi();
+    const controller = createController(port, api);
+
+    await controller.inspect();
+    const result = await controller.startM2yPairing(`  ${targetM2yId.toLowerCase()}  `);
+
+    expect(result).toEqual({ ok: true });
+    expect(api.preparePairRequest).toHaveBeenCalledWith({
+      m2yId: targetM2yId,
+      method: 'm2y-id',
+      operationId: pairingOperationId,
+    });
+    expect(port.preparePairingPacket).toHaveBeenCalledWith(requestId, expiresAtMs, targetBundle());
+    expect(api.submitPairRequest).toHaveBeenCalledWith(requestId, {
+      operationId: pairingOperationId,
+      packet: 'p'.repeat(64),
+    });
+    expect(port.acknowledgePairingPacket).toHaveBeenCalledWith(
+      pairingOperationId,
+      pairingOperationId,
+    );
+    expect(controller.getState()).toEqual({
+      status: 'outgoingPending',
+      identity,
+      request: {
+        expiresAtMs,
+        method: 'm2y-id',
+        peer: { m2yId: targetM2yId, routeId: targetDeviceId },
+        requestId,
+      },
+    });
+  });
+
+  it.each([
+    ['not-an-id', 'm2y-id-invalid'],
+    [identity.m2yId, 'self-pairing-not-allowed'],
+  ] as const)('不为无效或本机 M2Y-ID 创建服务端请求：%s', async (input, reason) => {
+    const port = createPort({ inspectIdentity: async () => ({ kind: 'unpaired', identity }) });
+    const api = createPairingApi();
+    const controller = createController(port, api);
+    await controller.inspect();
+
+    await expect(controller.startM2yPairing(input)).resolves.toEqual({ ok: false, reason });
+
+    expect(api.preparePairRequest).not.toHaveBeenCalled();
+    expect(port.preparePairingPacket).not.toHaveBeenCalled();
+  });
+
+  it('目标不可用时停留在未配对状态并给页面稳定原因', async () => {
+    const port = createPort({ inspectIdentity: async () => ({ kind: 'unpaired', identity }) });
+    const api = createPairingApi();
+    api.preparePairRequest.mockResolvedValueOnce({
+      ok: false,
+      failure: { kind: 'server', code: 'pairing-target-unavailable', httpStatus: 404 },
+    });
+    const controller = createController(port, api);
+    await controller.inspect();
+
+    await expect(controller.startM2yPairing(targetM2yId)).resolves.toEqual({
+      ok: false,
+      reason: 'pairing-target-unavailable',
+    });
+
+    expect(controller.getState()).toEqual({ status: 'unpaired', identity });
+    expect(port.preparePairingPacket).not.toHaveBeenCalled();
+  });
+
+  it('提交中断后重启路径原样重传 native outbox，不重新生成密文', async () => {
+    const packet = pairingPacket();
+    const listPendingPairingPackets = jest
+      .fn<ReturnType<ProductionIdentityPort['listPendingPairingPackets']>, []>()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([{ ...packet, createdAtMs: 1_800_000_000_000, retryCount: 0 }]);
+    const port = createPort({
+      inspectIdentity: async () => ({ kind: 'unpaired', identity }),
+      listPendingPairingPackets,
+    });
+    const api = createPairingApi();
+    api.submitPairRequest
+      .mockResolvedValueOnce({
+        ok: false,
+        failure: { kind: 'client', code: 'pairing-network-unavailable' },
+      })
+      .mockResolvedValueOnce(pairingSubmissionSuccess());
+    const controller = createController(port, api);
+    await controller.inspect();
+
+    await controller.startM2yPairing(targetM2yId);
+    expect(controller.getState()).toMatchObject({ status: 'networkFailed', retryFrom: 'unpaired' });
+    expect(port.acknowledgePairingPacket).not.toHaveBeenCalled();
+
+    await controller.retry();
+
+    expect(port.preparePairingPacket).toHaveBeenCalledTimes(1);
+    expect(api.submitPairRequest).toHaveBeenNthCalledWith(2, requestId, {
+      operationId: pairingOperationId,
+      packet: 'p'.repeat(64),
+    });
+    expect(port.acknowledgePairingPacket).toHaveBeenCalledTimes(1);
+    expect(controller.getState().status).toBe('outgoingPending');
+  });
 });
+
+function createPairingApi() {
+  return {
+    registerIdentity: jest.fn<
+      ReturnType<PairingApi['registerIdentity']>,
+      Parameters<PairingApi['registerIdentity']>
+    >(async () => registrationSuccess()),
+    readIdentityStatus: unexpected,
+    replenishPreKeys: unexpected,
+    createInvitation: unexpected,
+    preparePairRequest: jest.fn<
+      ReturnType<PairingApi['preparePairRequest']>,
+      Parameters<PairingApi['preparePairRequest']>
+    >(async () => ({
+      ok: true,
+      value: {
+        expiresAtMs,
+        method: 'm2y-id',
+        requestId,
+        status: 'prepared',
+        targetBundle: targetBundle(),
+      },
+    })),
+    submitPairRequest: jest.fn<
+      ReturnType<PairingApi['submitPairRequest']>,
+      Parameters<PairingApi['submitPairRequest']>
+    >(async () => pairingSubmissionSuccess()),
+    readEvents: unexpected,
+    respondToPairRequest: unexpected,
+    verifyPairRequest: unexpected,
+    cancelPairRequest: unexpected,
+  } satisfies PairingApi;
+}
+
+function targetBundle() {
+  return {
+    deviceId: targetDeviceId,
+    identityPublicKey: 'h'.repeat(32),
+    kyberPreKeyId: 22,
+    kyberPreKeyPublic: 'i'.repeat(256),
+    kyberPreKeySignature: 'j'.repeat(32),
+    m2yId: targetM2yId,
+    oneTimePreKey: { id: 23, publicKey: 'k'.repeat(32) },
+    registrationId: 20,
+    signedPreKeyId: 21,
+    signedPreKeyPublic: 'l'.repeat(32),
+    signedPreKeySignature: 'm'.repeat(32),
+    stableIdentityId: targetStableIdentityId,
+  } as const;
+}
+
+function pairingPacket() {
+  return {
+    expiresAtMs,
+    operationId: pairingOperationId,
+    packet: 'p'.repeat(64),
+    requestId,
+    targetDeviceId,
+    targetM2yId,
+    targetStableIdentityId,
+  } as const;
+}
+
+function pairingSubmissionSuccess() {
+  return {
+    ok: true,
+    value: {
+      eventCursor: 1,
+      operationId: pairingOperationId,
+      requestId,
+      status: 'pending',
+    },
+  } as const;
+}
+
+function registrationSuccess(): Readonly<{
+  ok: true;
+  value: IdentityRegistrationReceipt;
+}> {
+  return {
+    ok: true,
+    value: {
+      deviceId: identity.deviceId,
+      m2yId: identity.m2yId,
+      receiptId: 'receipt-registered',
+      registeredAtMs: 1_800_000_000_000,
+      status: 'registered',
+    },
+  };
+}
+
+function unexpected<T>(): Promise<PairingApiResult<T>> {
+  return Promise.reject(new Error('unexpected pairing API call'));
+}

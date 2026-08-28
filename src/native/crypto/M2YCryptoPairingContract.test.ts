@@ -4,6 +4,7 @@ import {
   decodeProductionPairingConfirmation,
   decodeProductionPairingDecision,
   decodeProductionPairingOutbox,
+  decodeProductionPreparedPairingPacket,
   decodeProductionPairingSweep,
 } from './M2YCryptoPairingContract';
 
@@ -11,6 +12,11 @@ const requestId = '2d1f5c1e-9b0a-4d7f-8c3b-1a2b3c4d5e6f';
 const operationId = 'f7a6b86d-680a-4cb5-8c9d-a043d37ff121';
 const otherOperationId = '0b9c8d7e-6f5a-4b3c-9d8e-7f6a5b4c3d2e';
 const createdAtMs = 1_800_000_000_000;
+const expiresAtMs = 1_800_000_600_000;
+const targetDeviceId = '8a1bf6aa-4a7a-4bed-9a43-835e74bf2241';
+const targetStableIdentityId = 'a73b209e-4866-4c08-a7dd-08a7389d3c46';
+const targetM2yId = 'M2Y-JKLM-NPQR-STUV-WXYZ';
+const packet = 'p'.repeat(64);
 
 const outboxItem = {
   createdAtMs,
@@ -89,6 +95,28 @@ describe('pairing native contracts', () => {
     });
   });
 
+  it('只接受 native 已提交并绑定目标身份的真实首包', () => {
+    const prepared = {
+      expiresAtMs,
+      operationId,
+      packet,
+      requestId,
+      schemaVersion: 1,
+      status: 'committed',
+      targetDeviceId,
+      targetM2yId,
+      targetStableIdentityId,
+    } as const;
+
+    expect(decodeProductionPreparedPairingPacket(prepared)).toEqual(prepared);
+    expect(() =>
+      decodeProductionPreparedPairingPacket({ ...prepared, privateSession: 'secret' }),
+    ).toThrow(invalid);
+    expect(() => decodeProductionPreparedPairingPacket({ ...prepared, packet: 'short' })).toThrow(
+      invalid,
+    );
+  });
+
   it('accepts an empty outbox and preserves the native order of a populated one', () => {
     expect(decodeProductionPairingOutbox({ items: [], schemaVersion: 1 })).toEqual({
       items: [],
@@ -105,6 +133,24 @@ describe('pairing native contracts', () => {
     expect(
       decodeProductionPairingOutbox({ items: [outboxItem, verify], schemaVersion: 1 }),
     ).toEqual({ items: [outboxItem, verify], schemaVersion: 1 });
+
+    const request = {
+      createdAtMs,
+      decision: 'submit',
+      expiresAtMs,
+      operationId: otherOperationId,
+      packet,
+      packetType: 'pair-request',
+      requestId,
+      retryCount: 0,
+      targetDeviceId,
+      targetM2yId,
+      targetStableIdentityId,
+    } as const;
+    expect(decodeProductionPairingOutbox({ items: [request], schemaVersion: 1 })).toEqual({
+      items: [request],
+      schemaVersion: 1,
+    });
   });
 
   it.each([
@@ -135,6 +181,11 @@ describe('pairing native contracts', () => {
     { items: [{ ...outboxItem, retryCount: -1 }], schemaVersion: 1 },
     { items: [{ ...outboxItem, createdAtMs: 0 }], schemaVersion: 1 },
     { items: [{ ...outboxItem, payload: 'AAAA' }], schemaVersion: 1 },
+    {
+      items: [{ ...outboxItem, decision: 'submit', packetType: 'pair-request' }],
+      schemaVersion: 1,
+    },
+    { items: [{ ...outboxItem, packet, packetType: 'pair-response' }], schemaVersion: 1 },
     { items: [outboxItem, outboxItem], schemaVersion: 1 },
     { items: {}, schemaVersion: 1 },
     { items: [], schemaVersion: 1, total: 0 },

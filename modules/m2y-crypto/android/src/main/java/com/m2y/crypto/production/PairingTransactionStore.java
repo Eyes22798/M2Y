@@ -38,12 +38,14 @@ final class PairingTransactionStore {
   private static final String NO_PACKET = "none";
 
   private final ProductionIdentityDatabase database;
+  private final ProductionPairingProtocolEngine protocolEngine;
   private final ProductionRecordCipher recordCipher;
 
   PairingTransactionStore(
       ProductionIdentityDatabase database, ProductionRecordCipher recordCipher) {
     this.database = database;
     this.recordCipher = recordCipher;
+    this.protocolEngine = new ProductionPairingProtocolEngine(database, recordCipher);
   }
 
   /** An inbound pairing packet as the transport delivered it, before anything is trusted. */
@@ -225,14 +227,24 @@ final class PairingTransactionStore {
   Map<String, Object> listOutbox(SQLiteDatabase connection) throws ProductionIdentityException {
     List<Map<String, Object>> items = new ArrayList<>();
     for (ProductionIdentityDatabase.OutboxRow row : database.pendingPairingIntents(connection)) {
-      PairingIntent intent = decodeIntent(row.operationId(), row.ciphertext());
-      if (!intent.requestId().equals(row.requestId())
-          || !intent.packetType().equals(row.packetType())) {
-        throw new ProductionIdentityException("pairing-intent-corrupt");
-      }
       Map<String, Object> item = new LinkedHashMap<>();
       item.put("createdAtMs", row.createdAtMs());
-      item.put("decision", intent.decision());
+      if ("pair-request".equals(row.packetType())) {
+        ProductionPairingPacketCodec.OutgoingPacket packet = protocolEngine.decodeOutbox(row);
+        item.put("decision", "submit");
+        item.put("expiresAtMs", packet.expiresAtMs());
+        item.put("packet", packet.packet());
+        item.put("targetDeviceId", packet.targetDeviceId());
+        item.put("targetM2yId", packet.targetM2yId());
+        item.put("targetStableIdentityId", packet.targetStableIdentityId());
+      } else {
+        PairingIntent intent = decodeIntent(row.operationId(), row.ciphertext());
+        if (!intent.requestId().equals(row.requestId())
+            || !intent.packetType().equals(row.packetType())) {
+          throw new ProductionIdentityException("pairing-intent-corrupt");
+        }
+        item.put("decision", intent.decision());
+      }
       item.put("operationId", row.operationId());
       item.put("packetType", row.packetType());
       item.put("requestId", row.requestId());

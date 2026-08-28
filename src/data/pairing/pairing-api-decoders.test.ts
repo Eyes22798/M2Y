@@ -109,6 +109,7 @@ describe('pairing API strict decoders', () => {
         signedPreKeyId: 5,
         signedPreKeyPublic: 'e'.repeat(32),
         signedPreKeySignature: 'f'.repeat(32),
+        stableIdentityId,
       },
     };
 

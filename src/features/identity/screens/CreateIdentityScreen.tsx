@@ -6,12 +6,10 @@ import { colors, radius, spacing, typography } from '@/design/tokens';
 import { useIdentityRelationship } from '@/stores/identity/IdentityRelationshipProvider';
 
 /**
- * Creates the production identity: real libsignal keys in the Android Keystore, generated natively.
- * The screen never claims more than that — an identity is not a relationship, and the M2Y-ID it
- * produces cannot be exchanged until a pairing service exists.
+ * 创建真实的生产身份。native 生成并持久化 libsignal/Keystore 材料；配置了配对端点时，
+ * controller 还会完成签名注册和 receipt 回写。身份注册不等于已经建立双人关系。
  *
- * `onSkip` is offered only by callers that can still reach the local workspace; the gate omits it
- * when an identity is genuinely required.
+ * `onSkip` 只由仍允许访问本机空间的调用方提供；强制配对门禁不会提供跳过入口。
  */
 export function CreateIdentityScreen({ onSkip }: { onSkip?: (() => void) | undefined }) {
   const { createIdentity, state } = useIdentityRelationship();
@@ -21,7 +19,7 @@ export function CreateIdentityScreen({ onSkip }: { onSkip?: (() => void) | undef
     <ScreenScaffold
       description="M2Y 会在这台设备的系统密钥库中生成一组只属于你的密钥，并派生一个可分享的 M2Y-ID。私钥不会离开设备，也不会写入普通存储。"
       eyebrow="安全建立 · 01"
-      title="创建你的本地身份"
+      title="创建你的 M2Y 身份"
     >
       <View style={styles.card}>
         <Text style={styles.cardTitle}>创建前需要知道</Text>

@@ -270,8 +270,10 @@ function decodeLeasedPublicBundle(value: unknown): LeasedPublicBundle | null {
       'signedPreKeyId',
       'signedPreKeyPublic',
       'signedPreKeySignature',
+      'stableIdentityId',
     ]) ||
     !isUuid(value.deviceId) ||
+    !isUuid(value.stableIdentityId) ||
     !isM2yId(value.m2yId) ||
     !isPositiveInteger(value.registrationId) ||
     !isPositiveInteger(value.signedPreKeyId) ||
@@ -298,6 +300,7 @@ function decodeLeasedPublicBundle(value: unknown): LeasedPublicBundle | null {
     signedPreKeyId: value.signedPreKeyId,
     signedPreKeyPublic: value.signedPreKeyPublic,
     signedPreKeySignature: value.signedPreKeySignature,
+    stableIdentityId: value.stableIdentityId,
   };
 }
 

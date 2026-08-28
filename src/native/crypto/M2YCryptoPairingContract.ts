@@ -8,13 +8,10 @@ import {
 } from './strict-native-decoder';
 
 /**
- * The pairing half of the native production contract. Everything that crosses this boundary is an
- * opaque id, an enum label or a counter: no peer identity key, safety number, packet or ciphertext
- * is carried, so a decoded value is safe to hold in application state and safe to log by name.
+ * native 生产配对合同。首包作为不透明密文允许短暂穿过 JavaScript 交给 transport；私钥、会话记录、
+ * 安全号码和解密后的 peer identity 永不越过边界。其余字段只包含不透明 ID、枚举和计数。
  *
- * The enum literals are the native stored values, not a friendlier restatement of them. Widening one
- * here would silently accept a payload the native store cannot produce, which is the failure these
- * decoders exist to prevent.
+ * 枚举字面量与 native 持久值完全一致；这里若擅自放宽，会接受 native 永远不会产生的状态。
  */
 
 /** Statuses a local decision can settle a pairing candidate into. */
@@ -35,6 +32,7 @@ export const productionPairingActivationDecisions = [
 
 export const productionPairingPacketTypes = [
   'pair-cancel',
+  'pair-request',
   'pair-response',
   'pair-verify',
 ] as const;
@@ -45,6 +43,7 @@ export const productionPairingIntentDecisions = [
   'confirm',
   'mismatch',
   'reject',
+  'submit',
 ] as const;
 
 export type ProductionPairingStatus = (typeof productionPairingStatuses)[number];
@@ -62,6 +61,7 @@ const PAIRING_INTENTS: Readonly<
   Record<ProductionPairingPacketType, readonly ProductionPairingIntentDecision[]>
 > = {
   'pair-cancel': ['cancel', 'mismatch'],
+  'pair-request': ['submit'],
   'pair-response': ['accept', 'reject'],
   'pair-verify': ['confirm'],
 };
@@ -99,10 +99,28 @@ export type ProductionPairingActivation = Readonly<{
 export type ProductionPairingOutboxItem = Readonly<{
   createdAtMs: number;
   decision: ProductionPairingIntentDecision;
+  expiresAtMs?: number;
   operationId: string;
+  packet?: string;
   packetType: ProductionPairingPacketType;
   requestId: string;
   retryCount: number;
+  targetDeviceId?: string;
+  targetM2yId?: string;
+  targetStableIdentityId?: string;
+}>;
+
+/** native 已把 PQXDH 会话和首包 outbox 同事务提交后的可传输结果。 */
+export type ProductionPreparedPairingPacket = Readonly<{
+  expiresAtMs: number;
+  operationId: string;
+  packet: string;
+  requestId: string;
+  schemaVersion: 1;
+  status: 'committed';
+  targetDeviceId: string;
+  targetM2yId: string;
+  targetStableIdentityId: string;
 }>;
 
 /** Pending transport work in the native insertion order the store guarantees. */
@@ -204,6 +222,47 @@ export function decodeProductionPairingAcknowledgement(
   return { operationId: value.operationId, schemaVersion: 1, status: 'acknowledged' };
 }
 
+export function decodeProductionPreparedPairingPacket(
+  value: unknown,
+): ProductionPreparedPairingPacket {
+  if (
+    !isNativeRecord(value) ||
+    !hasExactNativeKeys(value, [
+      'expiresAtMs',
+      'operationId',
+      'packet',
+      'requestId',
+      'schemaVersion',
+      'status',
+      'targetDeviceId',
+      'targetM2yId',
+      'targetStableIdentityId',
+    ]) ||
+    value.schemaVersion !== 1 ||
+    value.status !== 'committed' ||
+    !isEpochMs(value.expiresAtMs) ||
+    !isUuidV4(value.operationId) ||
+    !isUuidV4(value.requestId) ||
+    !isUuidV4(value.targetDeviceId) ||
+    !isUuidV4(value.targetStableIdentityId) ||
+    !isM2yId(value.targetM2yId) ||
+    !isOpaquePacket(value.packet)
+  ) {
+    return invalidNativeResponse();
+  }
+  return {
+    expiresAtMs: value.expiresAtMs,
+    operationId: value.operationId,
+    packet: value.packet,
+    requestId: value.requestId,
+    schemaVersion: 1,
+    status: 'committed',
+    targetDeviceId: value.targetDeviceId,
+    targetM2yId: value.targetM2yId,
+    targetStableIdentityId: value.targetStableIdentityId,
+  };
+}
+
 export function decodeProductionPairingOutbox(value: unknown): ProductionPairingOutbox {
   if (
     !isNativeRecord(value) ||
@@ -215,6 +274,8 @@ export function decodeProductionPairingOutbox(value: unknown): ProductionPairing
   }
 
   const items = value.items.map((item): ProductionPairingOutboxItem => {
+    const carriesPacket = isNativeRecord(item) && item.packetType === 'pair-request';
+    const packet = isNativeRecord(item) ? item.packet : undefined;
     if (
       !isNativeRecord(item) ||
       !hasExactNativeKeys(item, [
@@ -224,28 +285,64 @@ export function decodeProductionPairingOutbox(value: unknown): ProductionPairing
         'packetType',
         'requestId',
         'retryCount',
+        ...(carriesPacket
+          ? ['expiresAtMs', 'packet', 'targetDeviceId', 'targetM2yId', 'targetStableIdentityId']
+          : []),
       ]) ||
       !isUuidV4(item.operationId) ||
       !isUuidV4(item.requestId) ||
       !isEpochMs(item.createdAtMs) ||
       !isNonNegativeSafeInteger(item.retryCount) ||
-      !isKnownIntent(item.packetType, item.decision)
+      !isKnownIntent(item.packetType, item.decision) ||
+      (carriesPacket &&
+        (!isOpaquePacket(packet) ||
+          !isEpochMs(item.expiresAtMs) ||
+          !isUuidV4(item.targetDeviceId) ||
+          !isM2yId(item.targetM2yId) ||
+          !isUuidV4(item.targetStableIdentityId)))
     ) {
       return invalidNativeResponse();
     }
     return {
       createdAtMs: item.createdAtMs,
       decision: item.decision as ProductionPairingIntentDecision,
+      ...(carriesPacket && isEpochMs(item.expiresAtMs) ? { expiresAtMs: item.expiresAtMs } : {}),
       operationId: item.operationId,
+      ...(carriesPacket && isOpaquePacket(packet) ? { packet } : {}),
       packetType: item.packetType as ProductionPairingPacketType,
       requestId: item.requestId,
       retryCount: item.retryCount,
+      ...(carriesPacket && isUuidV4(item.targetDeviceId)
+        ? { targetDeviceId: item.targetDeviceId }
+        : {}),
+      ...(carriesPacket && isM2yId(item.targetM2yId) ? { targetM2yId: item.targetM2yId } : {}),
+      ...(carriesPacket && isUuidV4(item.targetStableIdentityId)
+        ? { targetStableIdentityId: item.targetStableIdentityId }
+        : {}),
     };
   });
   if (new Set(items.map(({ operationId }) => operationId)).size !== items.length) {
     return invalidNativeResponse();
   }
   return { items, schemaVersion: 1 };
+}
+
+function isM2yId(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^M2Y-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}(?:-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}){3}$/u.test(
+      value,
+    )
+  );
+}
+
+function isOpaquePacket(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length >= 32 &&
+    value.length <= 24_576 &&
+    /^[A-Za-z0-9_-]+$/u.test(value)
+  );
 }
 
 export function decodeProductionPairingSweep(value: unknown): ProductionPairingSweep {

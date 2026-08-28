@@ -109,6 +109,11 @@ export type IdentityRelationshipEvent =
       operationId: string;
     }>
   | Readonly<{ type: 'inspectUnpaired'; identity: IdentitySummary }>
+  | Readonly<{
+      type: 'inspectOutgoingPending';
+      identity: IdentitySummary;
+      request: PairingRequestSummary;
+    }>
   | Readonly<{ type: 'identityCreationStarted' }>
   | Readonly<{
       type: 'identityPrepared';

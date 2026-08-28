@@ -44,10 +44,38 @@ describe('toIdentityInspection', () => {
       identity: { deviceId, displayName: '用户', m2yId, stableIdentityId },
     });
   });
+
+  it('把已获回执的首包恢复为用户可见的等待确认状态', () => {
+    expect(
+      toIdentityInspection({
+        ...summary,
+        expiresAtMs: 1_800_000_600_000,
+        method: 'm2y-id',
+        registeredAtMs: 1_800_000_000_000,
+        requestId: '9d923119-0e58-4cfa-a191-5397585790bc',
+        status: 'outgoingPending',
+        targetDeviceId: 'b64a01a1-546a-47f8-8920-52e9444fe850',
+        targetM2yId: 'M2Y-JKLM-NPQR-STUV-WXYZ',
+        targetStableIdentityId: '59e5c303-bba8-46d0-a19c-26a6514938a7',
+      }),
+    ).toEqual({
+      kind: 'outgoingPending',
+      identity: { deviceId, m2yId, stableIdentityId },
+      request: {
+        expiresAtMs: 1_800_000_600_000,
+        method: 'm2y-id',
+        peer: {
+          m2yId: 'M2Y-JKLM-NPQR-STUV-WXYZ',
+          routeId: 'b64a01a1-546a-47f8-8920-52e9444fe850',
+        },
+        requestId: '9d923119-0e58-4cfa-a191-5397585790bc',
+      },
+    });
+  });
 });
 
 describe('toIdentityDraft', () => {
-  it('reports only the identifiers and never the prepared key material', () => {
+  it('把公开注册包交给应用端口，但身份摘要仍不携带密钥字段', () => {
     const registration: ProductionIdentityRegistration = {
       authPublicKey: 'a'.repeat(64),
       deviceId,
@@ -71,7 +99,8 @@ describe('toIdentityDraft', () => {
     expect(draft).toEqual({
       identity: { deviceId, m2yId, stableIdentityId },
       operationId: '2f2f6b31-1f4d-4b0b-9d0f-1a7e4c9a55f2',
+      registration,
     });
-    expect(JSON.stringify(draft)).not.toContain('a'.repeat(64));
+    expect(Object.keys(draft.identity)).toEqual(['deviceId', 'm2yId', 'stableIdentityId']);
   });
 });

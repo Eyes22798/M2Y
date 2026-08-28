@@ -224,6 +224,52 @@ final class ProductionIdentityDatabase extends SQLiteOpenHelper {
     database.insertOrThrow("secret_records", null, values);
   }
 
+  void upsertSecret(
+      SQLiteDatabase database,
+      String recordKind,
+      String recordKey,
+      byte[] ciphertext,
+      long revision,
+      long nowMs) {
+    ContentValues values = new ContentValues();
+    values.put("record_kind", recordKind);
+    values.put("record_key", recordKey);
+    values.put("ciphertext", ciphertext);
+    values.put("revision", revision);
+    values.put("updated_at_ms", nowMs);
+    if (database.insertWithOnConflict(
+            "secret_records", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+        == -1) {
+      throw new IllegalStateException("identity-secret-write-failed");
+    }
+  }
+
+  boolean deleteSecret(SQLiteDatabase database, String recordKind, String recordKey) {
+    return database.delete(
+            "secret_records",
+            "record_kind = ? AND record_key = ?",
+            new String[] {recordKind, recordKey})
+        == 1;
+  }
+
+  List<String> secretKeys(SQLiteDatabase database, String recordKind) {
+    List<String> keys = new ArrayList<>();
+    try (Cursor cursor =
+        database.query(
+            "secret_records",
+            new String[] {"record_key"},
+            "record_kind = ?",
+            new String[] {recordKind},
+            null,
+            null,
+            "record_key ASC")) {
+      while (cursor.moveToNext()) {
+        keys.add(cursor.getString(0));
+      }
+    }
+    return keys;
+  }
+
   void insertOutbox(
       SQLiteDatabase database,
       String operationId,
@@ -266,6 +312,21 @@ final class ProductionIdentityDatabase extends SQLiteOpenHelper {
             null,
             null,
             "created_at_ms ASC",
+            "1")) {
+      return cursor.moveToFirst() ? new PendingOutbox(cursor.getString(0), cursor.getBlob(1)) : null;
+    }
+  }
+
+  PendingOutbox identityRegistration(SQLiteDatabase database) {
+    try (Cursor cursor =
+        database.query(
+            "pairing_outbox",
+            new String[] {"operation_id", "ciphertext"},
+            "packet_type = ?",
+            new String[] {"identity-registration"},
+            null,
+            null,
+            "created_at_ms ASC, rowid ASC",
             "1")) {
       return cursor.moveToFirst() ? new PendingOutbox(cursor.getString(0), cursor.getBlob(1)) : null;
     }
@@ -552,7 +613,8 @@ final class ProductionIdentityDatabase extends SQLiteOpenHelper {
                 cursor.getString(2),
                 cursor.getBlob(3),
                 cursor.getLong(4),
-                cursor.getLong(5)));
+                cursor.getLong(5),
+                null));
       }
     }
     return rows;
@@ -569,6 +631,63 @@ final class ProductionIdentityDatabase extends SQLiteOpenHelper {
             null,
             null)) {
       return cursor.moveToFirst();
+    }
+  }
+
+  OutboxRow pairingOutbox(
+      SQLiteDatabase database, String requestId, String packetType) {
+    try (Cursor cursor =
+        database.query(
+            "pairing_outbox",
+            new String[] {
+              "operation_id", "request_id", "packet_type", "ciphertext", "created_at_ms",
+              "retry_count", "acknowledged_at_ms"
+            },
+            "request_id = ? AND packet_type = ?",
+            new String[] {requestId, packetType},
+            null,
+            null,
+            "created_at_ms ASC, rowid ASC",
+            "1")) {
+      if (!cursor.moveToFirst()) {
+        return null;
+      }
+      return new OutboxRow(
+          cursor.getString(0),
+          cursor.getString(1),
+          cursor.getString(2),
+          cursor.getBlob(3),
+          cursor.getLong(4),
+          cursor.getLong(5),
+          cursor.isNull(6) ? null : cursor.getLong(6));
+    }
+  }
+
+  OutboxRow latestPairingOutbox(SQLiteDatabase database, String packetType) {
+    try (Cursor cursor =
+        database.query(
+            "pairing_outbox",
+            new String[] {
+              "operation_id", "request_id", "packet_type", "ciphertext", "created_at_ms",
+              "retry_count", "acknowledged_at_ms"
+            },
+            "packet_type = ?",
+            new String[] {packetType},
+            null,
+            null,
+            "created_at_ms DESC, rowid DESC",
+            "1")) {
+      if (!cursor.moveToFirst()) {
+        return null;
+      }
+      return new OutboxRow(
+          cursor.getString(0),
+          cursor.getString(1),
+          cursor.getString(2),
+          cursor.getBlob(3),
+          cursor.getLong(4),
+          cursor.getLong(5),
+          cursor.isNull(6) ? null : cursor.getLong(6));
     }
   }
 
@@ -615,7 +734,8 @@ final class ProductionIdentityDatabase extends SQLiteOpenHelper {
       String packetType,
       byte[] ciphertext,
       long createdAtMs,
-      long retryCount) {}
+      long retryCount,
+      Long acknowledgedAtMs) {}
 
   record PendingOutbox(String operationId, byte[] ciphertext) {}
 

@@ -5,11 +5,7 @@ import type {
   ProductionIdentityRegistration,
 } from './M2YCryptoProductionContract';
 
-/**
- * Translates the decoded native payloads into the application-level identity contracts. Kept free of
- * the native module import so the mapping is unit-testable on a machine with no Android toolchain;
- * the adapter that actually calls into Kotlin stays a thin delegation on top of this.
- */
+/** 把严格解码后的 native 投影映射到应用合同；这里不导入 native 模块，便于在普通 Jest 中验证。 */
 export function toIdentityInspection(value: ProductionIdentityInspection): IdentityInspection {
   if (value.status === 'absent') {
     return { kind: 'absent' };
@@ -21,15 +17,27 @@ export function toIdentityInspection(value: ProductionIdentityInspection): Ident
     m2yId: value.m2yId,
     stableIdentityId: value.stableIdentityId,
   };
-  return value.status === 'pendingRegistration'
-    ? { kind: 'pendingRegistration', identity, operationId: value.operationId }
-    : { kind: 'unpaired', identity };
+  if (value.status === 'pendingRegistration') {
+    return { kind: 'pendingRegistration', identity, operationId: value.operationId };
+  }
+  if (value.status === 'outgoingPending') {
+    return {
+      kind: 'outgoingPending',
+      identity,
+      request: {
+        expiresAtMs: value.expiresAtMs,
+        method: 'm2y-id',
+        peer: { m2yId: value.targetM2yId, routeId: value.targetDeviceId },
+        requestId: value.requestId,
+      },
+    };
+  }
+  return { kind: 'unpaired', identity };
 }
 
 /**
- * The prepared bundle carries no display name, so none is reported rather than echoing back the
- * requested one: only the native store knows what it actually persisted, and the next inspection
- * reads it from there. The public key material stays out of the result entirely.
+ * 准备结果中的公开密钥包只交给应用层配对端口，用于完成服务端注册；它不进入 React state。
+ * 显示名仍只以 native store 的下一次 inspection 为准，避免回显一个未实际持久化的草稿值。
  */
 export function toIdentityDraft(value: ProductionIdentityRegistration): IdentityDraft {
   return {
@@ -39,5 +47,22 @@ export function toIdentityDraft(value: ProductionIdentityRegistration): Identity
       stableIdentityId: value.stableIdentityId,
     },
     operationId: value.operationId,
+    registration: {
+      authPublicKey: value.authPublicKey,
+      deviceId: value.deviceId,
+      identityPublicKey: value.identityPublicKey,
+      kyberPreKeyId: value.kyberPreKeyId,
+      kyberPreKeyPublic: value.kyberPreKeyPublic,
+      kyberPreKeySignature: value.kyberPreKeySignature,
+      m2yId: value.m2yId,
+      oneTimePreKeys: value.oneTimePreKeys,
+      operationId: value.operationId,
+      registrationId: value.registrationId,
+      schemaVersion: 1,
+      signedPreKeyId: value.signedPreKeyId,
+      signedPreKeyPublic: value.signedPreKeyPublic,
+      signedPreKeySignature: value.signedPreKeySignature,
+      stableIdentityId: value.stableIdentityId,
+    },
   };
 }

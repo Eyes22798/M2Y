@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
 import type { PublicConfigResult } from '@/application/config/contracts';
@@ -42,6 +42,7 @@ function createController(state: IdentityRelationshipState): IdentityRelationshi
     createIdentity: jest.fn(async () => undefined),
     resetLocalData: jest.fn(async () => undefined),
     retry: jest.fn(async () => undefined),
+    startM2yPairing: jest.fn(async () => ({ ok: true as const })),
   };
 }
 
@@ -72,7 +73,7 @@ describe('IdentityRelationshipGate', () => {
     const { view } = await renderGate({ status: 'needsIdentity' }, reachableConfig);
 
     expect(view.queryByText('private workspace')).toBeNull();
-    expect(view.getByText('创建你的本地身份')).toBeTruthy();
+    expect(view.getByText('创建你的 M2Y 身份')).toBeTruthy();
     expect(view.queryByLabelText('稍后再说，先使用本机空间')).toBeNull();
   });
 
@@ -84,6 +85,53 @@ describe('IdentityRelationshipGate', () => {
 
     expect(view.queryByText('private workspace')).toBeNull();
     expect(view.getByText(identity.m2yId)).toBeTruthy();
+    expect(view.queryByText(/服务端已登记/u)).toBeNull();
+  });
+
+  it('服务端注册和 native receipt 提交后展示真实登记结果', async () => {
+    const { controller, view } = await renderGate(
+      { status: 'unpaired', identity },
+      reachableConfig,
+    );
+
+    expect(view.queryByText('private workspace')).toBeNull();
+    expect(view.getByText('服务端已登记 · 你的 M2Y-ID')).toBeTruthy();
+    expect(view.getByText(identity.m2yId)).toBeTruthy();
+    expect(view.getByText('身份已登记，目前还没有建立任何关系。')).toBeTruthy();
+    expect(view.getByLabelText('对方的 M2Y-ID')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.changeText(view.getByLabelText('对方的 M2Y-ID'), 'm2y-jklm-npqr-stuv-wxyz');
+    });
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('发送配对请求'));
+    });
+    await waitFor(() =>
+      expect(controller.startM2yPairing).toHaveBeenCalledWith('m2y-jklm-npqr-stuv-wxyz'),
+    );
+  });
+
+  it('已提交首包后展示等待对方确认和目标 M2Y-ID', async () => {
+    const { view } = await renderGate(
+      {
+        status: 'outgoingPending',
+        identity,
+        request: {
+          expiresAtMs: 1_800_000_600_000,
+          method: 'm2y-id',
+          peer: {
+            m2yId: 'M2Y-JKLM-NPQR-STUV-WXYZ',
+            routeId: 'b64a01a1-546a-47f8-8920-52e9444fe850',
+          },
+          requestId: '9d923119-0e58-4cfa-a191-5397585790bc',
+        },
+      },
+      reachableConfig,
+    );
+
+    expect(view.getByText('等待对方确认')).toBeTruthy();
+    expect(view.getByText('M2Y-JKLM-NPQR-STUV-WXYZ')).toBeTruthy();
+    expect(view.queryByLabelText('对方的 M2Y-ID')).toBeNull();
   });
 
   it.each([

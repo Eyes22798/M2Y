@@ -136,6 +136,7 @@ export type LeasedPublicBundle = Readonly<{
   signedPreKeyId: number;
   signedPreKeyPublic: string;
   signedPreKeySignature: string;
+  stableIdentityId: string;
 }>;
 
 export type PreparedPairRequest = Readonly<{

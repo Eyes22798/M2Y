@@ -16,10 +16,16 @@ import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import java.util.Map;
+import java.util.UUID;
+import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.signal.libsignal.protocol.IdentityKeyPair;
+import org.signal.libsignal.protocol.ecc.ECKeyPair;
+import org.signal.libsignal.protocol.kem.KEMKeyPair;
+import org.signal.libsignal.protocol.kem.KEMKeyType;
 
 @RunWith(AndroidJUnit4.class)
 public final class ProductionIdentityManagerInstrumentedTest {
@@ -72,6 +78,40 @@ public final class ProductionIdentityManagerInstrumentedTest {
   }
 
   @Test
+  public void pqxdhFirstPacketOutboxAndAcknowledgedInspectionSurviveRestart() throws Exception {
+    Map<String, Object> registration = manager.prepareIdentityRegistration("Alice");
+    manager.commitIdentityRegistration((String) registration.get("operationId"), "receipt_pairing");
+    String requestId = UUID.randomUUID().toString();
+    long expiresAtMs = System.currentTimeMillis() + 600_000L;
+    JSONObject targetBundle = pairingTargetBundle();
+
+    Map<String, Object> prepared =
+        manager.preparePairingPacket(requestId, expiresAtMs, targetBundle.toString());
+    Map<String, Object> retry =
+        manager.preparePairingPacket(requestId, expiresAtMs, targetBundle.toString());
+
+    assertEquals("committed", prepared.get("status"));
+    assertEquals(prepared.get("operationId"), retry.get("operationId"));
+    assertEquals(prepared.get("packet"), retry.get("packet"));
+    assertEquals(requestId, prepared.get("requestId"));
+    assertTrue(((String) prepared.get("packet")).length() >= 32);
+
+    @SuppressWarnings("unchecked")
+    java.util.List<Map<String, Object>> outbox =
+        (java.util.List<Map<String, Object>>) manager.listPairingOutbox().get("items");
+    assertEquals(1, outbox.size());
+    assertEquals("pair-request", outbox.get(0).get("packetType"));
+    assertEquals("submit", outbox.get(0).get("decision"));
+    assertEquals(prepared.get("packet"), outbox.get(0).get("packet"));
+
+    manager.ackPairingOutbox((String) prepared.get("operationId"), "receipt_pairing_packet");
+    Map<String, Object> reopened = new ProductionIdentityManager(context).inspectProductionIdentity();
+    assertEquals("outgoingPending", reopened.get("status"));
+    assertEquals(requestId, reopened.get("requestId"));
+    assertEquals("M2Y-JKLM-NPQR-STUV-WXYZ", reopened.get("targetM2yId"));
+  }
+
+  @Test
   public void missingKeystoreKeyFailsClosedAndResetRemovesRemainingState() throws Exception {
     manager.prepareIdentityRegistration(null);
     deleteAlias(ProductionRecordCipher.KEY_ALIAS);
@@ -106,6 +146,36 @@ public final class ProductionIdentityManagerInstrumentedTest {
         KeyFactory.getInstance("EC").generatePublic(new X509EncodedKeySpec(publicKey)));
     verifier.update(value.getBytes(StandardCharsets.UTF_8));
     return verifier.verify(signatureBytes);
+  }
+
+  private static JSONObject pairingTargetBundle() throws Exception {
+    IdentityKeyPair identity = IdentityKeyPair.generate();
+    ECKeyPair preKey = ECKeyPair.generate();
+    ECKeyPair signedPreKey = ECKeyPair.generate();
+    byte[] signedSignature =
+        identity.getPrivateKey().calculateSignature(signedPreKey.getPublicKey().serialize());
+    KEMKeyPair kyber = KEMKeyPair.generate(KEMKeyType.KYBER_1024);
+    byte[] kyberSignature =
+        identity.getPrivateKey().calculateSignature(kyber.getPublicKey().serialize());
+    return new JSONObject()
+        .put("deviceId", "8a1bf6aa-4a7a-4bed-9a43-835e74bf2241")
+        .put("identityPublicKey", encode(identity.getPublicKey().serialize()))
+        .put("kyberPreKeyId", 4)
+        .put("kyberPreKeyPublic", encode(kyber.getPublicKey().serialize()))
+        .put("kyberPreKeySignature", encode(kyberSignature))
+        .put("m2yId", "M2Y-JKLM-NPQR-STUV-WXYZ")
+        .put(
+            "oneTimePreKey",
+            new JSONObject().put("id", 2).put("publicKey", encode(preKey.getPublicKey().serialize())))
+        .put("registrationId", 1)
+        .put("signedPreKeyId", 3)
+        .put("signedPreKeyPublic", encode(signedPreKey.getPublicKey().serialize()))
+        .put("signedPreKeySignature", encode(signedSignature))
+        .put("stableIdentityId", "a73b209e-4866-4c08-a7dd-08a7389d3c46");
+  }
+
+  private static String encode(byte[] value) {
+    return Base64.getUrlEncoder().withoutPadding().encodeToString(value);
   }
 
   private static void assertSafeFailure(String expectedCode, CheckedOperation operation)

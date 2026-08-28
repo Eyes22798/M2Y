@@ -122,6 +122,11 @@ describe('identity relationship state machine', () => {
       label: 'a registered identity with no relationship',
       event: { type: 'inspectUnpaired', identity } as const,
     },
+    {
+      expected: { status: 'outgoingPending', identity, request },
+      label: 'an acknowledged outgoing request',
+      event: { type: 'inspectOutgoingPending', identity, request } as const,
+    },
   ])('restores $label on relaunch', ({ event, expected }) => {
     expect(identityRelationshipReducer(initialIdentityRelationshipState, event)).toEqual(expected);
   });

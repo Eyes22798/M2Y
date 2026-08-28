@@ -61,6 +61,27 @@ describe('production identity native contracts', () => {
         status: 'unpaired',
       }),
     ).toMatchObject({ registeredAtMs: 1_800_000_000_000, status: 'unpaired' });
+    expect(
+      decodeProductionIdentityInspection({
+        deviceId,
+        expiresAtMs: 1_800_000_600_000,
+        m2yId,
+        method: 'm2y-id',
+        registeredAtMs: 1_800_000_000_000,
+        requestId: '9d923119-0e58-4cfa-a191-5397585790bc',
+        revision: 3,
+        schemaVersion: 1,
+        stableIdentityId,
+        status: 'outgoingPending',
+        targetDeviceId: 'b64a01a1-546a-47f8-8920-52e9444fe850',
+        targetM2yId: 'M2Y-JKLM-NPQR-STUV-WXYZ',
+        targetStableIdentityId: '59e5c303-bba8-46d0-a19c-26a6514938a7',
+      }),
+    ).toMatchObject({
+      method: 'm2y-id',
+      status: 'outgoingPending',
+      targetM2yId: 'M2Y-JKLM-NPQR-STUV-WXYZ',
+    });
   });
 
   it('accepts one exact public registration bundle', () => {

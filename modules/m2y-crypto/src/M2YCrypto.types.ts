@@ -17,6 +17,11 @@ export type M2YCryptoNativeModule = Readonly<{
   inspectProductionIdentity(): Promise<unknown>;
   listPairingOutbox(): Promise<unknown>;
   prepareIdentityRegistration(displayName: string | null): Promise<unknown>;
+  preparePairingPacket(
+    requestId: string,
+    expiresAtMs: number,
+    targetBundleJson: string,
+  ): Promise<unknown>;
   resetProductionIdentity(): Promise<unknown>;
   respondToPairingRequest(requestId: string, action: string): Promise<unknown>;
   runFreshAcceptance(): Promise<unknown>;

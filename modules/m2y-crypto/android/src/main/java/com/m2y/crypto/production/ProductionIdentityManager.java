@@ -36,6 +36,7 @@ public final class ProductionIdentityManager {
   private final ProductionIdentityDatabase database;
   private final ProductionDeviceSigner deviceSigner;
   private final ExecutorService executor;
+  private final ProductionPairingProtocolEngine pairingProtocolEngine;
   private final PairingTransactionStore pairingStore;
   private final ProductionRecordCipher recordCipher;
   private final SecureRandom secureRandom;
@@ -66,6 +67,7 @@ public final class ProductionIdentityManager {
     this.secureRandom = secureRandom;
     this.executor = executor;
     this.pairingStore = new PairingTransactionStore(database, recordCipher);
+    this.pairingProtocolEngine = new ProductionPairingProtocolEngine(database, recordCipher);
   }
 
   /**
@@ -162,6 +164,30 @@ public final class ProductionIdentityManager {
       throws ProductionIdentityException {
     String normalizedDisplayName = normalizeDisplayName(displayName);
     return execute(() -> prepareIdentityRegistrationInternal(normalizedDisplayName));
+  }
+
+  /**
+   * 使用服务端租赁的目标公钥材料生成真实 PQXDH 首包。协议会话和 outbox 必须一起提交，
+   * 所以调用方拿到 packet 时已经可以在进程重启后从 outbox 恢复同一个 operation。
+   */
+  public Map<String, Object> preparePairingPacket(
+      String requestId, long expiresAtMs, String targetBundleJson)
+      throws ProductionIdentityException {
+    validateUuid(requestId, "pairing-request-invalid");
+    return execute(
+        () -> {
+          SQLiteDatabase connection = requireRegisteredConnection();
+          ProductionIdentityDatabase.IdentityProjection identity = requireIdentity(connection);
+          return pairingProtocolEngine.preparePairingPacket(
+              connection,
+              identity,
+              decryptDisplayName(identity),
+              loadLocalRegistrationId(connection),
+              requestId,
+              expiresAtMs,
+              ProductionPairingTargetBundle.decode(targetBundleJson),
+              System.currentTimeMillis());
+        });
   }
 
   public void resetProductionIdentity() throws ProductionIdentityException {
@@ -361,7 +387,20 @@ public final class ProductionIdentityManager {
       result.put("status", "pendingRegistration");
     } else {
       result.put("registeredAtMs", identity.registeredAtMs());
-      result.put("status", "unpaired");
+      ProductionPairingPacketCodec.OutgoingPacket outgoing =
+          pairingProtocolEngine.inspectAcknowledgedOutgoing(
+              connection, System.currentTimeMillis());
+      if (outgoing == null) {
+        result.put("status", "unpaired");
+      } else {
+        result.put("expiresAtMs", outgoing.expiresAtMs());
+        result.put("method", "m2y-id");
+        result.put("requestId", outgoing.requestId());
+        result.put("status", "outgoingPending");
+        result.put("targetDeviceId", outgoing.targetDeviceId());
+        result.put("targetM2yId", outgoing.targetM2yId());
+        result.put("targetStableIdentityId", outgoing.targetStableIdentityId());
+      }
     }
     result.put("revision", identity.revision());
     result.put("schemaVersion", 1);
@@ -554,6 +593,31 @@ public final class ProductionIdentityManager {
     try {
       String displayName = new String(plaintext, StandardCharsets.UTF_8);
       return normalizeDisplayName(displayName);
+    } finally {
+      clear(plaintext);
+    }
+  }
+
+  private int loadLocalRegistrationId(SQLiteDatabase connection)
+      throws ProductionIdentityException {
+    ProductionIdentityDatabase.PendingOutbox registration =
+        database.identityRegistration(connection);
+    if (registration == null) {
+      throw new ProductionIdentityException("identity-registration-state-invalid");
+    }
+    byte[] plaintext =
+        recordCipher.decrypt(
+            "outbox", registration.operationId(), RECORD_REVISION, registration.ciphertext());
+    try {
+      Map<String, Object> bundle =
+          bundleFromJson(new JSONObject(new String(plaintext, StandardCharsets.UTF_8)));
+      Object value = bundle.get("registrationId");
+      if (!(value instanceof Integer registrationId) || registrationId <= 0) {
+        throw new ProductionIdentityException("identity-registration-bundle-corrupt");
+      }
+      return registrationId;
+    } catch (JSONException e) {
+      throw new ProductionIdentityException("identity-registration-bundle-corrupt", e);
     } finally {
       clear(plaintext);
     }

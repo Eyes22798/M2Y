@@ -2,32 +2,34 @@ import {
   identityRelationshipReducer,
   initialIdentityRelationshipState,
 } from '@/domain/identity/state-machine';
-import type { IdentityRelationshipEvent, IdentityRelationshipState } from '@/domain/identity/types';
+import type {
+  IdentityRelationshipEvent,
+  IdentityRelationshipState,
+  PairingRequestSummary,
+} from '@/domain/identity/types';
+import type { PairingApiFailure, PreparedPairRequest } from '@/application/pairing/contracts';
+import { isM2yId, normalizeM2yIdInput } from '@/domain/identity/m2y-id';
 
 import type {
+  IdentityControllerDependencies,
+  IdentityDraft,
   IdentityInspection,
   IdentityRelationshipController,
-  ProductionIdentityPort,
+  PendingPairingPacket,
+  PreparedPairingPacket,
+  StartM2yPairingResult,
 } from './contracts';
 
-type ControllerDependencies = Readonly<{
-  identityStore: ProductionIdentityPort;
-}>;
-
 /**
- * Drives the identity state machine from the native production store.
- *
- * Two properties matter more than the flow itself. Commands are serialised, so a double tap cannot
- * start two identity generations against the same single-threaded native executor. And no state is
- * reported optimistically: every status change follows a native call that already returned, which is
- * why a rejection lands on a fail-closed state instead of leaving the previous one on screen.
+ * 串行驱动身份状态机，避免双击向单线程 native executor 提交两次身份或首包操作。
+ * 所有可见状态都以 native 持久化和服务端回执为前提，不做乐观发布。
  */
 export class DefaultIdentityRelationshipController implements IdentityRelationshipController {
   private state: IdentityRelationshipState = initialIdentityRelationshipState;
   private readonly listeners = new Set<() => void>();
   private inFlight: Promise<void> | null = null;
 
-  constructor(private readonly dependencies: ControllerDependencies) {}
+  constructor(private readonly dependencies: IdentityControllerDependencies) {}
 
   getState(): IdentityRelationshipState {
     return this.state;
@@ -39,11 +41,30 @@ export class DefaultIdentityRelationshipController implements IdentityRelationsh
   }
 
   inspect(): Promise<void> {
-    return this.runExclusive(() => this.inspectInternal());
+    return this.runExclusive(() => this.inspectAndResumePendingWork());
   }
 
   retry(): Promise<void> {
-    return this.runExclusive(() => this.inspectInternal());
+    return this.runExclusive(() => this.inspectAndResumePendingWork());
+  }
+
+  startM2yPairing(rawM2yId: string): Promise<StartM2yPairingResult> {
+    const m2yId = normalizeM2yIdInput(rawM2yId);
+    if (!isM2yId(m2yId)) {
+      return Promise.resolve({ ok: false, reason: 'm2y-id-invalid' });
+    }
+    if (this.inFlight) {
+      return Promise.resolve({ ok: false, reason: 'pairing-operation-busy' });
+    }
+
+    const operation = this.startM2yPairingInternal(m2yId);
+    let lock: Promise<void>;
+    const completed = operation.finally(() => {
+      if (this.inFlight === lock) this.inFlight = null;
+    });
+    lock = completed.then(() => undefined);
+    this.inFlight = lock;
+    return completed;
   }
 
   createIdentity(displayName: string | null): Promise<void> {
@@ -63,14 +84,11 @@ export class DefaultIdentityRelationshipController implements IdentityRelationsh
         identity: draft.identity,
         operationId: draft.operationId,
       });
+      await this.registerDraft(draft);
     });
   }
 
-  /**
-   * Clears the cryptographic identity only. The encrypted workspace database is owned by the secure
-   * workspace controller and is deliberately left untouched: losing a half-finished registration must
-   * not cost the user notes and tasks that were never part of it.
-   */
+  /** 只清除密码学身份；加密工作区由 secure workspace controller 独立管理，不随配对失败删除。 */
   resetLocalData(): Promise<void> {
     return this.runExclusive(async () => {
       this.transition({ type: 'inspectStarted' });
@@ -109,9 +127,256 @@ export class DefaultIdentityRelationshipController implements IdentityRelationsh
       case 'unpaired':
         this.transition({ type: 'inspectUnpaired', identity: inspection.identity });
         return;
+      case 'outgoingPending':
+        this.transition({
+          type: 'inspectOutgoingPending',
+          identity: inspection.identity,
+          request: inspection.request,
+        });
+        return;
       default:
         return assertNever(inspection);
     }
+  }
+
+  private async inspectAndResumePendingWork(): Promise<void> {
+    await this.inspectInternal();
+    if (!this.dependencies.pairingApi) return;
+
+    if (this.state.status === 'unpaired') {
+      await this.resumePairingOutbox();
+      return;
+    }
+    if (this.state.status !== 'registering') return;
+
+    let draft: IdentityDraft;
+    try {
+      draft = await this.dependencies.identityStore.prepareIdentity(null);
+    } catch {
+      this.transition({
+        type: 'fatal',
+        code: 'identity-registration-resume-failed',
+        retryable: true,
+      });
+      return;
+    }
+    if (
+      draft.operationId !== this.state.operationId ||
+      draft.identity.deviceId !== this.state.identity.deviceId ||
+      draft.identity.m2yId !== this.state.identity.m2yId ||
+      draft.identity.stableIdentityId !== this.state.identity.stableIdentityId
+    ) {
+      this.transition({ type: 'recoveryRequired', code: 'identity-registration-binding-invalid' });
+      return;
+    }
+    await this.registerDraft(draft);
+  }
+
+  private async startM2yPairingInternal(m2yId: string): Promise<StartM2yPairingResult> {
+    if (this.state.status !== 'unpaired') {
+      return { ok: false, reason: 'pairing-operation-busy' };
+    }
+    const localIdentity = this.state.identity;
+    if (m2yId === localIdentity.m2yId) {
+      return { ok: false, reason: 'self-pairing-not-allowed' };
+    }
+
+    const api = this.dependencies.pairingApi;
+    const operationIdGenerator = this.dependencies.operationIdGenerator;
+    if (!api || !operationIdGenerator) {
+      return { ok: false, reason: 'pairing-transport-unavailable' };
+    }
+
+    let preparedResult;
+    try {
+      preparedResult = await api.preparePairRequest({
+        m2yId,
+        method: 'm2y-id',
+        operationId: operationIdGenerator.createOperationId(),
+      });
+    } catch {
+      this.transition({ type: 'networkFailed', retryFrom: 'unpaired' });
+      return { ok: false, reason: 'pairing-transport-unavailable' };
+    }
+    if (!preparedResult.ok) {
+      if (preparedResult.failure.kind === 'server') {
+        if (
+          preparedResult.failure.code === 'pairing-target-unavailable' ||
+          preparedResult.failure.code === 'identity-prekey-unavailable' ||
+          preparedResult.failure.code === 'pairing-relationship-conflict'
+        ) {
+          return { ok: false, reason: 'pairing-target-unavailable' };
+        }
+      }
+      this.handlePairingTransportFailure(preparedResult.failure, 'unpaired');
+      return { ok: false, reason: 'pairing-transport-unavailable' };
+    }
+
+    const prepared = preparedResult.value;
+    if (
+      prepared.method !== 'm2y-id' ||
+      prepared.targetBundle.m2yId !== m2yId ||
+      prepared.targetBundle.deviceId === localIdentity.deviceId ||
+      prepared.targetBundle.stableIdentityId === localIdentity.stableIdentityId
+    ) {
+      this.transition({ type: 'recoveryRequired', code: 'pairing-target-binding-invalid' });
+      return { ok: false, reason: 'pairing-target-unavailable' };
+    }
+
+    let packet: PreparedPairingPacket;
+    try {
+      packet = await this.dependencies.identityStore.preparePairingPacket(
+        prepared.requestId,
+        prepared.expiresAtMs,
+        prepared.targetBundle,
+      );
+    } catch {
+      this.transition({ type: 'fatal', code: 'pairing-packet-prepare-failed', retryable: true });
+      return { ok: false, reason: 'pairing-transport-unavailable' };
+    }
+    if (!packetMatchesPreparedRequest(packet, prepared)) {
+      this.transition({ type: 'recoveryRequired', code: 'pairing-packet-binding-invalid' });
+      return { ok: false, reason: 'pairing-target-unavailable' };
+    }
+
+    return (await this.submitAndCommitPairingPacket(packet))
+      ? { ok: true }
+      : { ok: false, reason: 'pairing-transport-unavailable' };
+  }
+
+  private async resumePairingOutbox(): Promise<void> {
+    let packets: readonly PendingPairingPacket[];
+    try {
+      packets = await this.dependencies.identityStore.listPendingPairingPackets();
+    } catch {
+      this.transition({ type: 'fatal', code: 'pairing-outbox-unreadable', retryable: true });
+      return;
+    }
+    if (packets.length === 0) return;
+    if (packets.length !== 1) {
+      this.transition({ type: 'recoveryRequired', code: 'pairing-outbox-conflict' });
+      return;
+    }
+    const packet = packets[0];
+    if (packet) await this.submitAndCommitPairingPacket(packet);
+  }
+
+  private async submitAndCommitPairingPacket(packet: PreparedPairingPacket): Promise<boolean> {
+    const api = this.dependencies.pairingApi;
+    if (!api) return false;
+
+    let submitted;
+    try {
+      submitted = await api.submitPairRequest(packet.requestId, {
+        operationId: packet.operationId,
+        packet: packet.packet,
+      });
+    } catch {
+      this.transition({ type: 'networkFailed', retryFrom: 'unpaired' });
+      return false;
+    }
+    if (!submitted.ok) {
+      this.handlePairingTransportFailure(submitted.failure, 'unpaired');
+      return false;
+    }
+    if (
+      submitted.value.operationId !== packet.operationId ||
+      submitted.value.requestId !== packet.requestId ||
+      submitted.value.status !== 'pending'
+    ) {
+      this.transition({ type: 'recoveryRequired', code: 'pairing-submit-receipt-invalid' });
+      return false;
+    }
+
+    try {
+      await this.dependencies.identityStore.acknowledgePairingPacket(
+        packet.operationId,
+        submitted.value.operationId,
+      );
+    } catch {
+      this.transition({ type: 'fatal', code: 'pairing-submit-commit-failed', retryable: true });
+      return false;
+    }
+    this.transition({
+      type: 'pairRequestPrepared',
+      request: pairingRequestOf(packet),
+    });
+    return true;
+  }
+
+  private async registerDraft(draft: IdentityDraft): Promise<void> {
+    const api = this.dependencies.pairingApi;
+    if (!api) return;
+
+    let registered;
+    try {
+      registered = await api.registerIdentity(draft.registration);
+    } catch {
+      this.transition({ type: 'networkFailed', retryFrom: 'registering' });
+      return;
+    }
+    if (!registered.ok) {
+      this.handleRegistrationFailure(registered.failure);
+      return;
+    }
+    if (
+      registered.value.deviceId !== draft.registration.deviceId ||
+      registered.value.m2yId !== draft.registration.m2yId
+    ) {
+      this.transition({ type: 'recoveryRequired', code: 'identity-registration-receipt-invalid' });
+      return;
+    }
+
+    let inspection: IdentityInspection;
+    try {
+      inspection = await this.dependencies.identityStore.commitRegistration(
+        draft.operationId,
+        registered.value.receiptId,
+      );
+    } catch {
+      this.transition({
+        type: 'fatal',
+        code: 'identity-registration-commit-failed',
+        retryable: true,
+      });
+      return;
+    }
+    if (inspection.kind !== 'unpaired') {
+      this.transition({ type: 'recoveryRequired', code: 'identity-registration-commit-invalid' });
+      return;
+    }
+    this.transition({ type: 'registrationCommitted', identity: inspection.identity });
+  }
+
+  private handleRegistrationFailure(failure: PairingApiFailure): void {
+    if (
+      (failure.kind === 'client' &&
+        (failure.code === 'pairing-network-unavailable' || failure.code === 'pairing-timeout')) ||
+      (failure.kind === 'server' && (failure.httpStatus === 429 || failure.httpStatus >= 500))
+    ) {
+      this.transition({ type: 'networkFailed', retryFrom: 'registering' });
+      return;
+    }
+    this.transition({
+      type: 'fatal',
+      code: failure.code,
+      retryable: failure.kind === 'client' && failure.code === 'pairing-signing-failed',
+    });
+  }
+
+  private handlePairingTransportFailure(
+    failure: PairingApiFailure,
+    retryFrom: 'unpaired' | 'outgoingPending',
+  ): void {
+    if (isRetryableTransportFailure(failure)) {
+      this.transition({ type: 'networkFailed', retryFrom });
+      return;
+    }
+    this.transition({
+      type: 'fatal',
+      code: failure.code,
+      retryable: failure.kind === 'client' && failure.code === 'pairing-signing-failed',
+    });
   }
 
   private transition(event: IdentityRelationshipEvent): void {
@@ -131,4 +396,34 @@ export class DefaultIdentityRelationshipController implements IdentityRelationsh
 
 function assertNever(value: never): never {
   throw new Error(`Unhandled identity inspection: ${JSON.stringify(value)}`);
+}
+
+function isRetryableTransportFailure(failure: PairingApiFailure): boolean {
+  return (
+    (failure.kind === 'client' &&
+      (failure.code === 'pairing-network-unavailable' || failure.code === 'pairing-timeout')) ||
+    (failure.kind === 'server' && (failure.httpStatus === 429 || failure.httpStatus >= 500))
+  );
+}
+
+function packetMatchesPreparedRequest(
+  packet: PreparedPairingPacket,
+  prepared: PreparedPairRequest,
+): boolean {
+  return (
+    packet.requestId === prepared.requestId &&
+    packet.expiresAtMs === prepared.expiresAtMs &&
+    packet.targetDeviceId === prepared.targetBundle.deviceId &&
+    packet.targetM2yId === prepared.targetBundle.m2yId &&
+    packet.targetStableIdentityId === prepared.targetBundle.stableIdentityId
+  );
+}
+
+function pairingRequestOf(packet: PreparedPairingPacket): PairingRequestSummary {
+  return {
+    expiresAtMs: packet.expiresAtMs,
+    method: 'm2y-id' as const,
+    peer: { m2yId: packet.targetM2yId, routeId: packet.targetDeviceId },
+    requestId: packet.requestId,
+  };
 }

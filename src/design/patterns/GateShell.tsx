@@ -53,18 +53,25 @@ export function ProgressGate({
 
 export function PrimaryButton({
   danger = false,
+  disabled = false,
   label,
   onPress,
 }: {
   danger?: boolean;
+  disabled?: boolean;
   label: string;
   onPress: () => void;
 }) {
   return (
     <MotionPressable
       accessibilityLabel={label}
+      disabled={disabled}
       onPress={onPress}
-      style={[styles.primaryButton, danger && styles.dangerButton]}
+      style={[
+        styles.primaryButton,
+        danger && styles.dangerButton,
+        disabled && styles.disabledButton,
+      ]}
     >
       <Text style={styles.primaryButtonText}>{label}</Text>
     </MotionPressable>
@@ -127,6 +134,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
   },
   dangerButton: { backgroundColor: colors.danger },
+  disabledButton: { opacity: 0.46 },
   primaryButtonText: { ...typography.title, color: colors.surfaceRaised },
   secondaryButton: {
     minHeight: 52,
