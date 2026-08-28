@@ -93,7 +93,9 @@
 
 当前切片状态：身份生成 → 签名注册 → native receipt 提交，以及 M2Y-ID 输入 → 服务端 prepare →
 native PQXDH 首包/outbox 同事务提交 → 服务端 submit → native ACK → `outgoingPending` 已接线；
-对端 polling packet 的 native 解密/candidate 提交仍未完成，因此 E3b/F/G 不提前勾选。
+对端 polling packet → native PQXDH 解密与绑定校验 → session/prekey/candidate 同事务提交 →
+`incomingReview` 请求摘要也已接线。下一纵向阻塞点是生成并投递接受/拒绝响应密文；在响应、
+安全号码和双方确认完成前，F/G 仍不提前勾选。
 
 - [x] Implement signed `PairingApiClient`, exact JSON/body hashing, timeouts, retries and strict response decoding.
 - [x] Implement foreground-aware cancellable polling with bounded backoff and cursor persistence.
@@ -152,6 +154,28 @@ native PQXDH 首包/outbox 同事务提交 → 服务端 submit → native ACK �
 5. 真机运行证据仍未完成：本轮 ADB daemon 启动后设备列表为空，所以新增的
    `pqxdhFirstPacketOutboxAndAcknowledgedInspectionSurviveRestart` 仅完成 androidTest 编译，不能声称
    Android Keystore/SQLite/PQXDH 在物理设备上通过；设备重新连接后应优先执行该 suite。
+
+### E3b M2Y-ID 接收端待审核证据
+
+1. `DefaultPairingPollingController` 已在身份 provider 的前台生命周期中启动，并把 `pair-request`
+   事件交给身份 controller；只有 `ProductionIdentityPort.consumePairingRequestEvent` 返回与事件
+   request 绑定的 `incomingReview`，状态机才发布用户可见状态，失败时游标不会推进。
+2. native 严格解码 canonical base64url PREKEY packet，用生产 SQLite-backed libsignal store 完成
+   PQXDH 解密；请求 ID、发送方设备/M2Y-ID/stable identity、消息 identity key、握手 identity key、
+   有效期必须一致且不能指向本机。session、prekey 消耗、可信身份、inbox marker 与加密 candidate
+   在同一事务提交，异常全部回滚。
+3. 重放检查先于 libsignal 解密：游标写入失败导致同一 packet 再投递时，不会因已消费 prekey 或
+   ratchet 状态而误报损坏，也不会创建第二个 candidate。重启 inspection 只解密最早的有效待审核
+   candidate，并拒绝 incoming/outgoing 同时可见的冲突状态。
+4. 页面仅展示 native 已提交 candidate 的对方 M2Y-ID 和“尚未接受”说明，不把 transport 明文字段
+   当作身份。接受/拒绝按钮本切片刻意不伪接：现有 native decision outbox 尚未携带服务端 `/respond`
+   所需的加密 packet，这是下一纵向切片必须解决的真实阻塞点。
+5. 2026-08-28 自动化证据：根目录 34 suites / 272 tests 全绿；typecheck、lint、format、
+   dependency-cruiser、config 全绿；native JVM 8 suites / 56 tests 通过，
+   androidTest Java 编译通过。新增 `incomingPqxdhPacketDecryptsPersistsAndReplaysIdempotently` 已编译，
+   但 ADB daemon 重启后设备列表仍为空，不能把该 instrumentation 记录为真机通过。新 ARM64 APK
+   110,083,588 bytes，`native-code: 'arm64-v8a'`，SHA-256
+   `96516AEBF56DE39175C8DCDFA7BDCF60A5957B7D427BA2AA19214462E75A1AB9`。
 
 ## F. Request review, safety number and Figma-aligned UI
 

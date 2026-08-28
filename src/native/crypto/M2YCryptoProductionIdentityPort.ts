@@ -27,6 +27,15 @@ export class M2YCryptoProductionIdentityPort implements ProductionIdentityPort {
     return toIdentityInspection(await commitM2YIdentityRegistration(operationId, receiptId));
   }
 
+  async consumePairingRequestEvent(
+    eventId: string,
+    requestId: string,
+    packet: string,
+  ): Promise<IdentityInspection> {
+    const { consumeM2YPairingRequestEvent } = await import('./M2YCryptoProductionAdapter');
+    return toIdentityInspection(await consumeM2YPairingRequestEvent(eventId, requestId, packet));
+  }
+
   async inspectIdentity(): Promise<IdentityInspection> {
     const { inspectM2YProductionIdentity } = await import('./M2YCryptoProductionAdapter');
     return toIdentityInspection(await inspectM2YProductionIdentity());

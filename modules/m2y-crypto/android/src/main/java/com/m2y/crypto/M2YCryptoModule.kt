@@ -100,6 +100,10 @@ class M2YCryptoModule : Module() {
         runProduction { it.confirmPairingSafetyNumber(requestId) }
       }
 
+      AsyncFunction("consumePairingRequestEvent") { eventId: String, requestId: String, packet: String ->
+        runProduction { it.consumePairingRequestEvent(eventId, requestId, packet) }
+      }
+
       AsyncFunction("activatePairedRelationship") { requestId: String, pairId: String ->
         runProduction { it.activatePairedRelationship(requestId, pairId) }
       }

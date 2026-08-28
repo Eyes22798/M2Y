@@ -4,6 +4,7 @@ import type {
   IdentityRegistrationReceipt,
   PairingApi,
   PairingApiResult,
+  PairingEvent,
 } from '@/application/pairing/contracts';
 
 import type { IdentityInspection, ProductionIdentityPort } from './contracts';
@@ -42,10 +43,33 @@ const registration: IdentityRegistrationRequest = {
   stableIdentityId: identity.stableIdentityId,
 };
 
+function incomingInspection(): Extract<IdentityInspection, { kind: 'incomingReview' }> {
+  return {
+    kind: 'incomingReview',
+    identity,
+    request: {
+      expiresAtMs,
+      method: 'm2y-id',
+      peer: { m2yId: targetM2yId, routeId: targetDeviceId },
+      requestId,
+    },
+  };
+}
+
+const incomingEvent: PairingEvent = {
+  cursor: 1,
+  eventId: '5638cfaf-113e-496d-aa30-b5bb2cdbcfec',
+  packet: 'q'.repeat(64),
+  requestId,
+  status: 'pending',
+  type: 'pair-request',
+};
+
 function createPort(overrides: Partial<ProductionIdentityPort> = {}) {
   return {
     acknowledgePairingPacket: jest.fn(async () => undefined),
     commitRegistration: jest.fn(async () => ({ kind: 'unpaired', identity }) as const),
+    consumePairingRequestEvent: jest.fn(async () => incomingInspection()),
     inspectIdentity: jest.fn(async (): Promise<IdentityInspection> => ({ kind: 'absent' })),
     listPendingPairingPackets: jest.fn(async () => []),
     prepareIdentity: jest.fn(async () => ({ identity, operationId, registration })),
@@ -97,6 +121,14 @@ describe('DefaultIdentityRelationshipController', () => {
           requestId,
         },
       } as const,
+    },
+    {
+      expected: {
+        status: 'incomingReview',
+        identity,
+        request: incomingInspection().request,
+      },
+      inspection: incomingInspection(),
     },
   ])('reports the stored identity as $inspection.kind', async ({ expected, inspection }) => {
     const controller = createController(createPort({ inspectIdentity: async () => inspection }));
@@ -281,6 +313,7 @@ describe('DefaultIdentityRelationshipController', () => {
     expect(Object.keys(port)).toEqual([
       'acknowledgePairingPacket',
       'commitRegistration',
+      'consumePairingRequestEvent',
       'inspectIdentity',
       'listPendingPairingPackets',
       'prepareIdentity',
@@ -427,6 +460,63 @@ describe('DefaultIdentityRelationshipController', () => {
     });
     expect(port.acknowledgePairingPacket).toHaveBeenCalledTimes(1);
     expect(controller.getState().status).toBe('outgoingPending');
+  });
+
+  it('将轮询收到的首包交给原生解密，并仅发布已持久化的待审核请求', async () => {
+    const port = createPort({ inspectIdentity: async () => ({ kind: 'unpaired', identity }) });
+    const controller = createController(port);
+    await controller.inspect();
+
+    await expect(controller.applyEvents([incomingEvent])).resolves.toEqual({ ok: true });
+
+    expect(port.consumePairingRequestEvent).toHaveBeenCalledWith(
+      incomingEvent.eventId,
+      incomingEvent.requestId,
+      incomingEvent.packet,
+    );
+    expect(controller.getState()).toEqual({
+      status: 'incomingReview',
+      identity,
+      request: incomingInspection().request,
+    });
+  });
+
+  it('缺少密文或收到尚未实现的事件时不推进游标对应的应用状态', async () => {
+    const port = createPort({ inspectIdentity: async () => ({ kind: 'unpaired', identity }) });
+    const controller = createController(port);
+    await controller.inspect();
+
+    const eventWithoutPacket: PairingEvent = {
+      cursor: 1,
+      eventId: incomingEvent.eventId,
+      requestId,
+      status: 'pending',
+      type: 'pair-request',
+    };
+    await expect(controller.applyEvents([eventWithoutPacket])).resolves.toEqual({
+      ok: false,
+      reason: 'pairing-event-apply-failed',
+    });
+
+    expect(port.consumePairingRequestEvent).not.toHaveBeenCalled();
+    expect(controller.getState()).toEqual({ status: 'unpaired', identity });
+  });
+
+  it('原生拒绝非法首包时保持未配对，允许轮询安全重试', async () => {
+    const port = createPort({
+      consumePairingRequestEvent: jest.fn(async () => {
+        throw new Error('pairing-request-invalid');
+      }),
+      inspectIdentity: async () => ({ kind: 'unpaired', identity }),
+    });
+    const controller = createController(port);
+    await controller.inspect();
+
+    await expect(controller.applyEvents([incomingEvent])).resolves.toEqual({
+      ok: false,
+      reason: 'pairing-event-apply-failed',
+    });
+    expect(controller.getState()).toEqual({ status: 'unpaired', identity });
   });
 });
 

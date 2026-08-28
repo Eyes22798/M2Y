@@ -127,6 +127,11 @@ describe('identity relationship state machine', () => {
       label: 'an acknowledged outgoing request',
       event: { type: 'inspectOutgoingPending', identity, request } as const,
     },
+    {
+      expected: { status: 'incomingReview', identity, request },
+      label: '已解密并等待本机审核的传入请求',
+      event: { type: 'inspectIncomingReview', identity, request } as const,
+    },
   ])('restores $label on relaunch', ({ event, expected }) => {
     expect(identityRelationshipReducer(initialIdentityRelationshipState, event)).toEqual(expected);
   });

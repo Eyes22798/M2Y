@@ -1,8 +1,9 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import { Text } from 'react-native';
+import { AppState, Text } from 'react-native';
 
 import type { PublicConfigResult } from '@/application/config/contracts';
 import type { IdentityRelationshipController } from '@/application/identity/contracts';
+import type { PairingPollingController } from '@/application/pairing/contracts';
 import type { IdentityRelationshipState } from '@/domain/identity/types';
 import { IdentityRelationshipProvider } from '@/stores/identity/IdentityRelationshipProvider';
 
@@ -36,6 +37,7 @@ const reachableConfig: PublicConfigResult = {
 
 function createController(state: IdentityRelationshipState): IdentityRelationshipController {
   return {
+    applyEvents: jest.fn(async () => ({ ok: true as const })),
     getState: () => state,
     subscribe: () => () => undefined,
     inspect: jest.fn(async () => undefined),
@@ -49,10 +51,15 @@ function createController(state: IdentityRelationshipState): IdentityRelationshi
 async function renderGate(
   state: IdentityRelationshipState,
   publicConfig: PublicConfigResult = placeholderConfig,
+  pollingController?: PairingPollingController,
 ) {
   const controller = createController(state);
   const view = await render(
-    <IdentityRelationshipProvider controller={controller} publicConfig={publicConfig}>
+    <IdentityRelationshipProvider
+      controller={controller}
+      {...(pollingController ? { pollingController } : {})}
+      publicConfig={publicConfig}
+    >
       <IdentityRelationshipGate>
         <Text>private workspace</Text>
       </IdentityRelationshipGate>
@@ -62,6 +69,27 @@ async function renderGate(
 }
 
 describe('IdentityRelationshipGate', () => {
+  it('身份可接收事件时启动轮询，并在页面卸载时停止', async () => {
+    const pollingController: PairingPollingController = {
+      getState: () => ({ status: 'stopped' }),
+      setForeground: jest.fn(),
+      start: jest.fn(async () => undefined),
+      stop: jest.fn(),
+      subscribe: () => () => undefined,
+    };
+    const { view } = await renderGate(
+      { status: 'unpaired', identity },
+      reachableConfig,
+      pollingController,
+    );
+
+    await waitFor(() =>
+      expect(pollingController.start).toHaveBeenCalledWith(AppState.currentState === 'active'),
+    );
+    await act(async () => view.unmount());
+    await waitFor(() => expect(pollingController.stop).toHaveBeenCalledTimes(1));
+  });
+
   it('keeps private content unmounted until the identity state is known', async () => {
     const { controller, view } = await renderGate({ status: 'inspecting' });
 
@@ -132,6 +160,30 @@ describe('IdentityRelationshipGate', () => {
     expect(view.getByText('等待对方确认')).toBeTruthy();
     expect(view.getByText('M2Y-JKLM-NPQR-STUV-WXYZ')).toBeTruthy();
     expect(view.queryByLabelText('对方的 M2Y-ID')).toBeNull();
+  });
+
+  it('仅在原生提交候选后展示已验证来源的传入请求摘要', async () => {
+    const { view } = await renderGate(
+      {
+        status: 'incomingReview',
+        identity,
+        request: {
+          expiresAtMs: 1_800_000_600_000,
+          method: 'm2y-id',
+          peer: {
+            m2yId: 'M2Y-JKLM-NPQR-STUV-WXYZ',
+            routeId: 'b64a01a1-546a-47f8-8920-52e9444fe850',
+          },
+          requestId: '9d923119-0e58-4cfa-a191-5397585790bc',
+        },
+      },
+      reachableConfig,
+    );
+
+    expect(view.getByText('收到连接请求')).toBeTruthy();
+    expect(view.getByText('M2Y-JKLM-NPQR-STUV-WXYZ')).toBeTruthy();
+    expect(view.getByText(/尚未接受/u)).toBeTruthy();
+    expect(view.queryByText('private workspace')).toBeNull();
   });
 
   it.each([

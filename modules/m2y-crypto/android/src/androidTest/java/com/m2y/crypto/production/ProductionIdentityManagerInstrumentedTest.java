@@ -15,6 +15,7 @@ import java.security.KeyStore;
 import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.json.JSONObject;
@@ -23,9 +24,15 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.signal.libsignal.protocol.IdentityKeyPair;
+import org.signal.libsignal.protocol.SessionBuilder;
+import org.signal.libsignal.protocol.SessionCipher;
+import org.signal.libsignal.protocol.SignalProtocolAddress;
 import org.signal.libsignal.protocol.ecc.ECKeyPair;
 import org.signal.libsignal.protocol.kem.KEMKeyPair;
 import org.signal.libsignal.protocol.kem.KEMKeyType;
+import org.signal.libsignal.protocol.message.CiphertextMessage;
+import org.signal.libsignal.protocol.state.impl.InMemorySignalProtocolStore;
+import org.signal.libsignal.protocol.util.KeyHelper;
 
 @RunWith(AndroidJUnit4.class)
 public final class ProductionIdentityManagerInstrumentedTest {
@@ -112,6 +119,39 @@ public final class ProductionIdentityManagerInstrumentedTest {
   }
 
   @Test
+  public void incomingPqxdhPacketDecryptsPersistsAndReplaysIdempotently() throws Exception {
+    Map<String, Object> registration = manager.prepareIdentityRegistration("Bob");
+    manager.commitIdentityRegistration((String) registration.get("operationId"), "receipt_target");
+    String requestId = UUID.randomUUID().toString();
+    String eventId = UUID.randomUUID().toString();
+    long expiresAtMs = System.currentTimeMillis() + 600_000L;
+    String packet = senderPacket(registration, requestId, expiresAtMs);
+    byte[] corruptedBytes = Base64.getUrlDecoder().decode(packet);
+    corruptedBytes[corruptedBytes.length - 1] ^= 0x01;
+    String corruptedPacket = encode(corruptedBytes);
+
+    assertSafeFailure(
+        "pairing-packet-open-failed",
+        () -> manager.consumePairingRequestEvent(eventId, requestId, corruptedPacket));
+    assertEquals("unpaired", manager.inspectProductionIdentity().get("status"));
+
+    Map<String, Object> inspection =
+        manager.consumePairingRequestEvent(eventId, requestId, packet);
+
+    assertEquals("incomingReview", inspection.get("status"));
+    assertEquals(requestId, inspection.get("requestId"));
+    assertEquals("M2Y-JKLM-NPQR-STUV-WXYZ", inspection.get("peerM2yId"));
+    assertEquals("8a1bf6aa-4a7a-4bed-9a43-835e74bf2241", inspection.get("peerDeviceId"));
+    assertFalse(inspection.containsKey("packet"));
+
+    Map<String, Object> replayed =
+        new ProductionIdentityManager(context)
+            .consumePairingRequestEvent(eventId, requestId, packet);
+    assertEquals("incomingReview", replayed.get("status"));
+    assertEquals(requestId, replayed.get("requestId"));
+  }
+
+  @Test
   public void missingKeystoreKeyFailsClosedAndResetRemovesRemainingState() throws Exception {
     manager.prepareIdentityRegistration(null);
     deleteAlias(ProductionRecordCipher.KEY_ALIAS);
@@ -172,6 +212,61 @@ public final class ProductionIdentityManagerInstrumentedTest {
         .put("signedPreKeyPublic", encode(signedPreKey.getPublicKey().serialize()))
         .put("signedPreKeySignature", encode(signedSignature))
         .put("stableIdentityId", "a73b209e-4866-4c08-a7dd-08a7389d3c46");
+  }
+
+  private static String senderPacket(
+      Map<String, Object> targetRegistration, String requestId, long expiresAtMs)
+      throws Exception {
+    ProductionPairingTargetBundle target =
+        ProductionPairingTargetBundle.decode(
+            targetBundleFromRegistration(targetRegistration).toString());
+    IdentityKeyPair senderIdentity = IdentityKeyPair.generate();
+    InMemorySignalProtocolStore senderStore =
+        new InMemorySignalProtocolStore(
+            senderIdentity, KeyHelper.generateRegistrationId(false));
+    String senderStableIdentityId = "a73b209e-4866-4c08-a7dd-08a7389d3c46";
+    SignalProtocolAddress senderAddress =
+        new SignalProtocolAddress(senderStableIdentityId, 1);
+    SignalProtocolAddress requestAddress = new SignalProtocolAddress(requestId, 1);
+    new SessionBuilder(senderStore, requestAddress, senderAddress).process(target.toPreKeyBundle());
+    String handshake =
+        ProductionPairingPacketCodec.encodeHandshake(
+            new ProductionPairingPacketCodec.Handshake(
+                requestId,
+                "8a1bf6aa-4a7a-4bed-9a43-835e74bf2241",
+                encode(senderIdentity.getPublicKey().serialize()),
+                "M2Y-JKLM-NPQR-STUV-WXYZ",
+                senderStableIdentityId,
+                "Alice",
+                expiresAtMs));
+    CiphertextMessage ciphertext =
+        new SessionCipher(senderStore, senderAddress, requestAddress)
+            .encrypt(handshake.getBytes(StandardCharsets.UTF_8));
+    assertEquals(CiphertextMessage.PREKEY_TYPE, ciphertext.getType());
+    return encode(ciphertext.serialize());
+  }
+
+  private static JSONObject targetBundleFromRegistration(Map<String, Object> registration)
+      throws Exception {
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> preKeys =
+        (List<Map<String, Object>>) registration.get("oneTimePreKeys");
+    Map<String, Object> preKey = preKeys.get(0);
+    return new JSONObject()
+        .put("deviceId", registration.get("deviceId"))
+        .put("identityPublicKey", registration.get("identityPublicKey"))
+        .put("kyberPreKeyId", registration.get("kyberPreKeyId"))
+        .put("kyberPreKeyPublic", registration.get("kyberPreKeyPublic"))
+        .put("kyberPreKeySignature", registration.get("kyberPreKeySignature"))
+        .put("m2yId", registration.get("m2yId"))
+        .put(
+            "oneTimePreKey",
+            new JSONObject().put("id", preKey.get("id")).put("publicKey", preKey.get("publicKey")))
+        .put("registrationId", registration.get("registrationId"))
+        .put("signedPreKeyId", registration.get("signedPreKeyId"))
+        .put("signedPreKeyPublic", registration.get("signedPreKeyPublic"))
+        .put("signedPreKeySignature", registration.get("signedPreKeySignature"))
+        .put("stableIdentityId", registration.get("stableIdentityId"));
   }
 
   private static String encode(byte[] value) {

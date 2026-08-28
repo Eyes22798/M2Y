@@ -29,6 +29,7 @@ describe('AppProviders', () => {
     };
     const identityState = { status: 'unpaired', identity } as const;
     const identityRelationshipController: IdentityRelationshipController = {
+      applyEvents: async () => ({ ok: true }),
       getState: () => identityState,
       subscribe: () => () => undefined,
       inspect: async () => undefined,

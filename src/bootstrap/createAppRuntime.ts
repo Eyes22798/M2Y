@@ -3,9 +3,12 @@ import { Platform } from 'react-native';
 import type { PublicConfigResult } from '@/application/config/contracts';
 import type { IdentityRelationshipController } from '@/application/identity/contracts';
 import { DefaultIdentityRelationshipController } from '@/application/identity/controller';
+import type { PairingPollingController } from '@/application/pairing/contracts';
+import { DefaultPairingPollingController } from '@/application/pairing/polling-controller';
 import type { SecureWorkspaceController } from '@/application/secure-workspace/contracts';
 import { DefaultSecureWorkspaceController } from '@/application/secure-workspace/controller';
 import { createExpoPairingApiClient } from '@/data/pairing/createExpoPairingApiClient';
+import { ExpoPairingCursorStore } from '@/data/pairing/ExpoPairingCursorStore';
 import { ExpoDatabaseKeyStore } from '@/data/secure-store/ExpoDatabaseKeyStore';
 import { SqlCipherDatabase } from '@/data/sqlite/SqlCipherDatabase';
 import { ExpoPublicConfigReader } from '@/native/config/ExpoPublicConfigReader';
@@ -16,6 +19,7 @@ import { ExpoSecureRandom } from '@/native/random/ExpoSecureRandom';
 
 export type AppRuntime = Readonly<{
   identityRelationshipController: IdentityRelationshipController;
+  pairingPollingController?: PairingPollingController;
   publicConfig: PublicConfigResult;
   secureWorkspaceController: SecureWorkspaceController;
 }>;
@@ -39,12 +43,21 @@ export function createAppRuntime(): AppRuntime {
           new M2YCryptoDeviceRequestSigner(),
         )
       : undefined;
+  const identityRelationshipController = new DefaultIdentityRelationshipController({
+    identityStore: new M2YCryptoProductionIdentityPort(),
+    ...(pairingApi ? { operationIdGenerator: random } : {}),
+    ...(pairingApi ? { pairingApi } : {}),
+  });
+  const pairingPollingController = pairingApi
+    ? new DefaultPairingPollingController({
+        api: pairingApi,
+        cursorStore: new ExpoPairingCursorStore(),
+        eventConsumer: identityRelationshipController,
+      })
+    : undefined;
   return {
-    identityRelationshipController: new DefaultIdentityRelationshipController({
-      identityStore: new M2YCryptoProductionIdentityPort(),
-      ...(pairingApi ? { operationIdGenerator: random } : {}),
-      ...(pairingApi ? { pairingApi } : {}),
-    }),
+    identityRelationshipController,
+    ...(pairingPollingController ? { pairingPollingController } : {}),
     publicConfig,
     secureWorkspaceController: new DefaultSecureWorkspaceController({
       keyStore: new ExpoDatabaseKeyStore(),

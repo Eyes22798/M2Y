@@ -114,6 +114,11 @@ export type IdentityRelationshipEvent =
       identity: IdentitySummary;
       request: PairingRequestSummary;
     }>
+  | Readonly<{
+      type: 'inspectIncomingReview';
+      identity: IdentitySummary;
+      request: PairingRequestSummary;
+    }>
   | Readonly<{ type: 'identityCreationStarted' }>
   | Readonly<{
       type: 'identityPrepared';

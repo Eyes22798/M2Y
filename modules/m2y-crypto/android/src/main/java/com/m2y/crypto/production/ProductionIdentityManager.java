@@ -151,6 +151,28 @@ public final class ProductionIdentityManager {
                 requireRegisteredConnection(), requestId, System.currentTimeMillis()));
   }
 
+  /** 只接收 transport 的不透明首包；发送方身份必须由 native 解密结果提供。 */
+  public Map<String, Object> consumePairingRequestEvent(
+      String eventId, String requestId, String packet) throws ProductionIdentityException {
+    validateUuid(eventId, "pairing-event-invalid");
+    validateUuid(requestId, "pairing-request-invalid");
+    return execute(
+        () -> {
+          SQLiteDatabase connection = requireRegisteredConnection();
+          ProductionIdentityDatabase.IdentityProjection identity = requireIdentity(connection);
+          pairingProtocolEngine.consumePairingRequestEvent(
+              connection,
+              identity,
+              loadLocalRegistrationId(connection),
+              pairingStore,
+              eventId,
+              requestId,
+              packet,
+              System.currentTimeMillis());
+          return inspectInternal();
+        });
+  }
+
   public Map<String, Object> inspectProductionIdentity() throws ProductionIdentityException {
     return execute(this::inspectInternal);
   }
@@ -387,10 +409,27 @@ public final class ProductionIdentityManager {
       result.put("status", "pendingRegistration");
     } else {
       result.put("registeredAtMs", identity.registeredAtMs());
+      long nowMs = System.currentTimeMillis();
       ProductionPairingPacketCodec.OutgoingPacket outgoing =
-          pairingProtocolEngine.inspectAcknowledgedOutgoing(
-              connection, System.currentTimeMillis());
-      if (outgoing == null) {
+          pairingProtocolEngine.inspectAcknowledgedOutgoing(connection, nowMs);
+      ProductionIdentityDatabase.CandidateRow incoming =
+          database.firstReviewableCandidate(connection, nowMs);
+      if (outgoing != null && incoming != null) {
+        throw new ProductionIdentityException("pairing-visible-state-conflict");
+      }
+      if (incoming != null) {
+        PairingRecordCodec.PeerCandidate candidate = pairingStore.decodeCandidate(incoming);
+        if (!incoming.peerRouteId().equals(candidate.peerDeviceId())) {
+          throw new ProductionIdentityException("pairing-candidate-binding-invalid");
+        }
+        result.put("expiresAtMs", incoming.expiresAtMs());
+        result.put("method", "m2y-id");
+        result.put("peerDeviceId", candidate.peerDeviceId());
+        result.put("peerM2yId", candidate.peerM2yId());
+        result.put("peerStableIdentityId", candidate.peerStableIdentityId());
+        result.put("requestId", incoming.requestId());
+        result.put("status", "incomingReview");
+      } else if (outgoing == null) {
         result.put("status", "unpaired");
       } else {
         result.put("expiresAtMs", outgoing.expiresAtMs());

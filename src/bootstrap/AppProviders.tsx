@@ -21,6 +21,9 @@ export function AppProviders({ children, runtime }: PropsWithChildren<{ runtime?
             <SecureWorkspaceGate>
               <IdentityRelationshipProvider
                 controller={appRuntime.identityRelationshipController}
+                {...(appRuntime.pairingPollingController
+                  ? { pollingController: appRuntime.pairingPollingController }
+                  : {})}
                 publicConfig={appRuntime.publicConfig}
               >
                 <IdentityRelationshipGate>{children}</IdentityRelationshipGate>

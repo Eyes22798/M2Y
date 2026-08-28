@@ -12,6 +12,7 @@ export type M2YCryptoNativeModule = Readonly<{
   cleanupAcceptance(runId: string): Promise<unknown>;
   commitIdentityRegistration(operationId: string, receiptId: string): Promise<unknown>;
   confirmPairingSafetyNumber(requestId: string): Promise<unknown>;
+  consumePairingRequestEvent(eventId: string, requestId: string, packet: string): Promise<unknown>;
   getPendingAcceptanceRunId(): Promise<unknown>;
   getSpikeInfo(): unknown;
   inspectProductionIdentity(): Promise<unknown>;

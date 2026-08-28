@@ -51,11 +51,24 @@ export type ProductionIdentityOutgoingPending = ProductionIdentitySummary &
     targetStableIdentityId: string;
   }>;
 
+export type ProductionIdentityIncomingReview = ProductionIdentitySummary &
+  Readonly<{
+    expiresAtMs: number;
+    method: 'm2y-id';
+    peerDeviceId: string;
+    peerM2yId: string;
+    peerStableIdentityId: string;
+    registeredAtMs: number;
+    requestId: string;
+    status: 'incomingReview';
+  }>;
+
 export type ProductionIdentityInspection =
   | ProductionIdentityAbsent
   | ProductionIdentityPendingRegistration
   | ProductionIdentityUnpaired
-  | ProductionIdentityOutgoingPending;
+  | ProductionIdentityOutgoingPending
+  | ProductionIdentityIncomingReview;
 
 export type ProductionOneTimePreKey = Readonly<{
   id: number;
@@ -194,6 +207,41 @@ export function decodeProductionIdentityInspection(value: unknown): ProductionId
       targetDeviceId: value.targetDeviceId,
       targetM2yId: value.targetM2yId,
       targetStableIdentityId: value.targetStableIdentityId,
+    };
+  }
+  if (
+    value.status === 'incomingReview' &&
+    hasExactNativeKeys(
+      value,
+      identityKeys(value, [
+        'expiresAtMs',
+        'method',
+        'peerDeviceId',
+        'peerM2yId',
+        'peerStableIdentityId',
+        'registeredAtMs',
+        'requestId',
+        'status',
+      ]),
+    ) &&
+    value.method === 'm2y-id' &&
+    isEpochMs(value.registeredAtMs) &&
+    isEpochMs(value.expiresAtMs) &&
+    isUuidV4(value.requestId) &&
+    isUuidV4(value.peerDeviceId) &&
+    isUuidV4(value.peerStableIdentityId) &&
+    isM2yId(value.peerM2yId)
+  ) {
+    return {
+      ...summary,
+      expiresAtMs: value.expiresAtMs,
+      method: 'm2y-id',
+      peerDeviceId: value.peerDeviceId,
+      peerM2yId: value.peerM2yId,
+      peerStableIdentityId: value.peerStableIdentityId,
+      registeredAtMs: value.registeredAtMs,
+      requestId: value.requestId,
+      status: 'incomingReview',
     };
   }
   return invalidNativeResponse();

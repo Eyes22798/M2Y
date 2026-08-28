@@ -396,6 +396,36 @@ final class ProductionIdentityDatabase extends SQLiteOpenHelper {
           cursor.getLong(4));
     }
   }
+
+  CandidateRow firstReviewableCandidate(SQLiteDatabase database, long nowMs) {
+    try (Cursor cursor =
+        database.query(
+            "pairing_candidates",
+            new String[] {
+              "request_id", "peer_route_id", "status", "candidate_ciphertext", "expires_at_ms",
+              "revision"
+            },
+            "status = ? AND expires_at_ms > ?",
+            new String[] {
+              PairingProtocolRules.CandidateStatus.PENDING_LOCAL_REVIEW.stored(),
+              Long.toString(nowMs)
+            },
+            null,
+            null,
+            "rowid ASC",
+            "1")) {
+      if (!cursor.moveToFirst()) {
+        return null;
+      }
+      return new CandidateRow(
+          cursor.getString(0),
+          cursor.getString(1),
+          cursor.getString(2),
+          cursor.getBlob(3),
+          cursor.getLong(4),
+          cursor.getLong(5));
+    }
+  }
   void updateCandidateStatus(
       SQLiteDatabase database, String requestId, String status, long revision) {
     ContentValues values = new ContentValues();

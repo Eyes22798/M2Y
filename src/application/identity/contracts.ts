@@ -7,6 +7,7 @@ import type {
   IdentityRegistrationRequest,
   LeasedPublicBundle,
   PairingApi,
+  PairingEventConsumer,
 } from '@/application/pairing/contracts';
 
 /**
@@ -19,6 +20,11 @@ export type IdentityInspection =
   | Readonly<{ kind: 'unpaired'; identity: IdentitySummary }>
   | Readonly<{
       kind: 'outgoingPending';
+      identity: IdentitySummary;
+      request: PairingRequestSummary;
+    }>
+  | Readonly<{
+      kind: 'incomingReview';
       identity: IdentitySummary;
       request: PairingRequestSummary;
     }>;
@@ -72,6 +78,11 @@ export interface ProductionIdentityPort {
   inspectIdentity(): Promise<IdentityInspection>;
   prepareIdentity(displayName: string | null): Promise<IdentityDraft>;
   commitRegistration(operationId: string, receiptId: string): Promise<IdentityInspection>;
+  consumePairingRequestEvent(
+    eventId: string,
+    requestId: string,
+    packet: string,
+  ): Promise<IdentityInspection>;
   preparePairingPacket(
     requestId: string,
     expiresAtMs: number,
@@ -88,7 +99,7 @@ export type IdentityControllerDependencies = Readonly<{
   pairingApi?: PairingApi;
 }>;
 
-export interface IdentityRelationshipController {
+export interface IdentityRelationshipController extends PairingEventConsumer {
   getState(): IdentityRelationshipState;
   subscribe(listener: () => void): () => void;
   inspect(): Promise<void>;

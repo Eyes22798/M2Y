@@ -43,6 +43,7 @@ function createStore(initial: IdentityRelationshipState) {
   let state = initial;
   const listeners = new Set<() => void>();
   const controller: IdentityRelationshipController = {
+    applyEvents: jest.fn(async () => ({ ok: true as const })),
     getState: () => state,
     subscribe: (listener) => {
       listeners.add(listener);

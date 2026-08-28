@@ -7,7 +7,12 @@ import type {
   IdentityRelationshipState,
   PairingRequestSummary,
 } from '@/domain/identity/types';
-import type { PairingApiFailure, PreparedPairRequest } from '@/application/pairing/contracts';
+import type {
+  PairingApiFailure,
+  PairingEvent,
+  PairingEventApplyResult,
+  PreparedPairRequest,
+} from '@/application/pairing/contracts';
 import { isM2yId, normalizeM2yIdInput } from '@/domain/identity/m2y-id';
 
 import type {
@@ -48,23 +53,23 @@ export class DefaultIdentityRelationshipController implements IdentityRelationsh
     return this.runExclusive(() => this.inspectAndResumePendingWork());
   }
 
+  applyEvents(events: readonly PairingEvent[]): Promise<PairingEventApplyResult> {
+    if (events.length === 0) return Promise.resolve({ ok: true });
+    return this.runExclusiveResult(() => this.applyEventsInternal(events), {
+      ok: false,
+      reason: 'pairing-event-apply-failed',
+    });
+  }
+
   startM2yPairing(rawM2yId: string): Promise<StartM2yPairingResult> {
     const m2yId = normalizeM2yIdInput(rawM2yId);
     if (!isM2yId(m2yId)) {
       return Promise.resolve({ ok: false, reason: 'm2y-id-invalid' });
     }
-    if (this.inFlight) {
-      return Promise.resolve({ ok: false, reason: 'pairing-operation-busy' });
-    }
-
-    const operation = this.startM2yPairingInternal(m2yId);
-    let lock: Promise<void>;
-    const completed = operation.finally(() => {
-      if (this.inFlight === lock) this.inFlight = null;
+    return this.runExclusiveResult(() => this.startM2yPairingInternal(m2yId), {
+      ok: false,
+      reason: 'pairing-operation-busy',
     });
-    lock = completed.then(() => undefined);
-    this.inFlight = lock;
-    return completed;
   }
 
   createIdentity(displayName: string | null): Promise<void> {
@@ -130,6 +135,13 @@ export class DefaultIdentityRelationshipController implements IdentityRelationsh
       case 'outgoingPending':
         this.transition({
           type: 'inspectOutgoingPending',
+          identity: inspection.identity,
+          request: inspection.request,
+        });
+        return;
+      case 'incomingReview':
+        this.transition({
+          type: 'inspectIncomingReview',
           identity: inspection.identity,
           request: inspection.request,
         });
@@ -242,6 +254,44 @@ export class DefaultIdentityRelationshipController implements IdentityRelationsh
     return (await this.submitAndCommitPairingPacket(packet))
       ? { ok: true }
       : { ok: false, reason: 'pairing-transport-unavailable' };
+  }
+
+  private async applyEventsInternal(
+    events: readonly PairingEvent[],
+  ): Promise<PairingEventApplyResult> {
+    for (const event of events) {
+      if (event.type !== 'pair-request' || event.packet === undefined) {
+        return { ok: false, reason: 'pairing-event-apply-failed' };
+      }
+
+      let inspection: IdentityInspection;
+      try {
+        inspection = await this.dependencies.identityStore.consumePairingRequestEvent(
+          event.eventId,
+          event.requestId,
+          event.packet,
+        );
+      } catch {
+        return { ok: false, reason: 'pairing-event-apply-failed' };
+      }
+      if (
+        inspection.kind !== 'incomingReview' ||
+        inspection.request.requestId !== event.requestId
+      ) {
+        return { ok: false, reason: 'pairing-event-apply-failed' };
+      }
+      if (
+        this.state.status !== 'unpaired' &&
+        !(
+          this.state.status === 'incomingReview' &&
+          this.state.request.requestId === inspection.request.requestId
+        )
+      ) {
+        return { ok: false, reason: 'pairing-event-apply-failed' };
+      }
+      this.transition({ type: 'incomingRequestCommitted', request: inspection.request });
+    }
+    return { ok: true };
   }
 
   private async resumePairingOutbox(): Promise<void> {
@@ -391,6 +441,18 @@ export class DefaultIdentityRelationshipController implements IdentityRelationsh
     });
     this.inFlight = promise;
     return promise;
+  }
+
+  private runExclusiveResult<T>(operation: () => Promise<T>, busyResult: T): Promise<T> {
+    if (this.inFlight) return Promise.resolve(busyResult);
+    const result = operation();
+    let lock: Promise<void>;
+    const completed = result.finally(() => {
+      if (this.inFlight === lock) this.inFlight = null;
+    });
+    lock = completed.then(() => undefined);
+    this.inFlight = lock;
+    return completed;
   }
 }
 

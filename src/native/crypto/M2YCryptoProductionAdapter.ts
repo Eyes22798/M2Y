@@ -3,6 +3,7 @@ import {
   activatePairedRelationship as activateNativePairedRelationship,
   commitIdentityRegistration as commitNativeIdentityRegistration,
   confirmPairingSafetyNumber as confirmNativePairingSafetyNumber,
+  consumePairingRequestEvent as consumeNativePairingRequestEvent,
   inspectProductionIdentity as inspectNativeProductionIdentity,
   listPairingOutbox as listNativePairingOutbox,
   prepareIdentityRegistration as prepareNativeIdentityRegistration,
@@ -112,6 +113,17 @@ export function signM2YDeviceRequest(canonicalRequest: string): Promise<Producti
 
 export function resetM2YProductionIdentity(): Promise<ProductionIdentityReset> {
   return callNative(resetNativeProductionIdentity, decodeProductionIdentityReset);
+}
+
+export function consumeM2YPairingRequestEvent(
+  eventId: string,
+  requestId: string,
+  packet: string,
+): Promise<ProductionIdentityInspection> {
+  return callNative(
+    () => consumeNativePairingRequestEvent(eventId, requestId, packet),
+    decodeProductionIdentityInspection,
+  );
 }
 
 export function prepareM2YPairingPacket(

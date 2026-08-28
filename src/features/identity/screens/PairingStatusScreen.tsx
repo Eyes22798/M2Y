@@ -90,6 +90,15 @@ export function PairingStatusScreen({
             </Text>
           </View>
         ) : null}
+        {state.status === 'incomingReview' ? (
+          <View style={styles.incomingCard}>
+            <Text style={styles.incomingLabel}>收到连接请求</Text>
+            <Text style={styles.pendingIdentity}>{state.request.peer.m2yId}</Text>
+            <Text style={styles.pendingBody}>
+              请求已在本机完成端到端解密和身份绑定校验。你尚未接受，对方还不能成为你的关系。
+            </Text>
+          </View>
+        ) : null}
         {transportUnavailable ? (
           <View style={styles.notice}>
             <Text style={styles.noticeTitle}>配对服务尚未开放</Text>
@@ -224,6 +233,15 @@ const styles = StyleSheet.create({
   pendingLabel: { ...typography.label, color: colors.waiting },
   pendingIdentity: { ...typography.title, color: colors.ink },
   pendingBody: { ...typography.body, color: colors.inkMuted },
+  incomingCard: {
+    gap: spacing.sm,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceRaised,
+  },
+  incomingLabel: { ...typography.label, color: colors.accent },
   notice: {
     gap: spacing.sm,
     padding: spacing.lg,

@@ -32,6 +32,18 @@ export function toIdentityInspection(value: ProductionIdentityInspection): Ident
       },
     };
   }
+  if (value.status === 'incomingReview') {
+    return {
+      kind: 'incomingReview',
+      identity,
+      request: {
+        expiresAtMs: value.expiresAtMs,
+        method: 'm2y-id',
+        peer: { m2yId: value.peerM2yId, routeId: value.peerDeviceId },
+        requestId: value.requestId,
+      },
+    };
+  }
   return { kind: 'unpaired', identity };
 }
 

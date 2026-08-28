@@ -51,6 +51,33 @@ final class ProductionPairingPacketCodec {
     return encode(fields, "pairing-handshake-invalid");
   }
 
+  static Handshake decodeHandshake(String json) throws ProductionIdentityException {
+    if (json == null || json.length() > 4_096) {
+      throw new ProductionIdentityException("pairing-handshake-corrupt");
+    }
+    try {
+      JSONObject value = new JSONObject(json);
+      boolean hasDisplayName = value.has("senderDisplayName");
+      if (value.length() != (hasDisplayName ? 8 : 7)
+          || value.getInt("schemaVersion") != SCHEMA_VERSION) {
+        throw new ProductionIdentityException("pairing-handshake-corrupt");
+      }
+      Handshake handshake =
+          new Handshake(
+              value.getString("requestId"),
+              value.getString("senderDeviceId"),
+              value.getString("senderIdentityPublicKey"),
+              value.getString("senderM2yId"),
+              value.getString("senderStableIdentityId"),
+              hasDisplayName ? value.getString("senderDisplayName") : null,
+              value.getLong("expiresAtMs"));
+      validateHandshake(handshake, "pairing-handshake-corrupt");
+      return handshake;
+    } catch (JSONException e) {
+      throw new ProductionIdentityException("pairing-handshake-corrupt", e);
+    }
+  }
+
   static String encodeOutgoing(OutgoingPacket value) throws ProductionIdentityException {
     validateOutgoing(value, "pairing-outbox-packet-invalid");
     Map<String, Object> fields = new LinkedHashMap<>();

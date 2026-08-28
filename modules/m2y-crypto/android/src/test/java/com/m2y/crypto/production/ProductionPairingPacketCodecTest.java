@@ -33,18 +33,20 @@ public final class ProductionPairingPacketCodecTest {
 
   @Test
   public void handshakeKeepsOptionalDisplayNameInsideEncryptedPayload() throws Exception {
+    ProductionPairingPacketCodec.Handshake handshake =
+        new ProductionPairingPacketCodec.Handshake(
+            REQUEST_ID,
+            DEVICE_ID,
+            "a".repeat(43),
+            "M2Y-2345-6789-ABCD-EFGH",
+            STABLE_ID,
+            "用户",
+            1_800_000_600_000L);
     String encoded =
-        ProductionPairingPacketCodec.encodeHandshake(
-            new ProductionPairingPacketCodec.Handshake(
-                REQUEST_ID,
-                DEVICE_ID,
-                "a".repeat(43),
-                "M2Y-2345-6789-ABCD-EFGH",
-                STABLE_ID,
-                "用户",
-                1_800_000_600_000L));
+        ProductionPairingPacketCodec.encodeHandshake(handshake);
 
     assertTrue(encoded.contains("\"senderDisplayName\":\"用户\""));
+    assertEquals(handshake, ProductionPairingPacketCodec.decodeHandshake(encoded));
     assertThrows(
         ProductionIdentityException.class,
         () ->
@@ -57,6 +59,16 @@ public final class ProductionPairingPacketCodecTest {
                     STABLE_ID,
                     "\u0000",
                     1_800_000_600_000L)));
+    assertThrows(
+        ProductionIdentityException.class,
+        () ->
+            ProductionPairingPacketCodec.decodeHandshake(
+                encoded.substring(0, encoded.length() - 1) + ",\"secret\":true}"));
+    assertThrows(
+        ProductionIdentityException.class,
+        () ->
+            ProductionPairingPacketCodec.decodeHandshake(
+                encoded.replace("\"schemaVersion\":1", "\"schemaVersion\":2")));
   }
 
   @Test

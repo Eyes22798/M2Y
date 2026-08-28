@@ -355,6 +355,11 @@ final class PairingTransactionStore {
     return Map.of("operationId", operationId);
   }
 
+  PeerCandidate decodeCandidate(ProductionIdentityDatabase.CandidateRow row)
+      throws ProductionIdentityException {
+    return decodeCandidate(row.requestId(), row.candidateCiphertext());
+  }
+
   private PeerCandidate decodeCandidate(String requestId, byte[] ciphertext)
       throws ProductionIdentityException {
     if (ciphertext == null) {

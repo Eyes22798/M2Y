@@ -4,6 +4,7 @@ export {
   cleanupAcceptance,
   commitIdentityRegistration,
   confirmPairingSafetyNumber,
+  consumePairingRequestEvent,
   getPendingAcceptanceRunId,
   getSpikeInfo,
   inspectProductionIdentity,

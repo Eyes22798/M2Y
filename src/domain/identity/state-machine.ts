@@ -42,6 +42,12 @@ export function identityRelationshipReducer(
             identity: event.identity,
             request: event.request,
           };
+        case 'inspectIncomingReview':
+          return {
+            status: 'incomingReview',
+            identity: event.identity,
+            request: event.request,
+          };
         default:
           return state;
       }

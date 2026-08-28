@@ -6,12 +6,14 @@ import {
   useMemo,
   useSyncExternalStore,
 } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 
 import type { PublicConfigResult } from '@/application/config/contracts';
 import type {
   IdentityRelationshipController,
   StartM2yPairingResult,
 } from '@/application/identity/contracts';
+import type { PairingPollingController } from '@/application/pairing/contracts';
 import {
   decideWorkspaceAccess,
   type WorkspaceAccess,
@@ -32,9 +34,11 @@ const IdentityRelationshipContext = createContext<IdentityRelationshipValue | nu
 export function IdentityRelationshipProvider({
   children,
   controller,
+  pollingController,
   publicConfig,
 }: PropsWithChildren<{
   controller: IdentityRelationshipController;
+  pollingController?: PairingPollingController;
   publicConfig: PublicConfigResult;
 }>) {
   const state = useSyncExternalStore(
@@ -46,6 +50,19 @@ export function IdentityRelationshipProvider({
   useEffect(() => {
     void controller.inspect();
   }, [controller]);
+
+  const pollingEnabled = canPollFrom(state);
+  useEffect(() => {
+    if (!pollingController || !pollingEnabled) return;
+    void pollingController.start(AppState.currentState === 'active');
+    const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      pollingController.setForeground(nextState === 'active');
+    });
+    return () => {
+      subscription.remove();
+      pollingController.stop();
+    };
+  }, [pollingController, pollingEnabled]);
 
   const value = useMemo<IdentityRelationshipValue>(
     () => ({
@@ -62,6 +79,16 @@ export function IdentityRelationshipProvider({
     <IdentityRelationshipContext.Provider value={value}>
       {children}
     </IdentityRelationshipContext.Provider>
+  );
+}
+
+function canPollFrom(state: IdentityRelationshipState): boolean {
+  return (
+    state.status === 'unpaired' ||
+    state.status === 'outgoingPending' ||
+    state.status === 'incomingReview' ||
+    state.status === 'awaitingSafetyVerification' ||
+    state.status === 'active'
   );
 }
 

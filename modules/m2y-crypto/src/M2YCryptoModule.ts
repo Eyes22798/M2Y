@@ -71,6 +71,14 @@ export function confirmPairingSafetyNumber(requestId: string): Promise<unknown> 
   return nativeModule.confirmPairingSafetyNumber(requestId);
 }
 
+export function consumePairingRequestEvent(
+  eventId: string,
+  requestId: string,
+  packet: string,
+): Promise<unknown> {
+  return nativeModule.consumePairingRequestEvent(eventId, requestId, packet);
+}
+
 export function activatePairedRelationship(requestId: string, pairId: string): Promise<unknown> {
   return nativeModule.activatePairedRelationship(requestId, pairId);
 }
