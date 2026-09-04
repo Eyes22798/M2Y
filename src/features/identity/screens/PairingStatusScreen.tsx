@@ -1,11 +1,17 @@
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { PrimaryButton, SecondaryButton } from '@/design/patterns/GateShell';
 import { ScreenScaffold } from '@/design/primitives/ScreenScaffold';
 import { colors, radius, spacing, typography } from '@/design/tokens';
 import type { IdentityRelationshipState, IdentitySummary } from '@/domain/identity/types';
+import {
+  IdentityReadyStep,
+  M2yIdInputStep,
+  PairingMethodStep,
+  type PairingSetupStep,
+} from '@/features/identity/components/PairingSetupSteps';
 import { useIdentityRelationship } from '@/stores/identity/IdentityRelationshipProvider';
 
 /**
@@ -18,12 +24,15 @@ export function PairingStatusScreen({
   onEnterWorkspace?: (() => void) | undefined;
 }) {
   const { access, retry, startM2yPairing, state } = useIdentityRelationship();
+  const [setupStep, setSetupStep] = useState<PairingSetupStep>('identity-ready');
   const [targetM2yId, setTargetM2yId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const identity = identityOf(state);
   const transportUnavailable =
     access.kind === 'granted' && access.reason === 'pairing-transport-unavailable';
+  const setupCopy =
+    state.status === 'unpaired' && !transportUnavailable ? describeSetup(setupStep) : null;
 
   const submit = async () => {
     if (submitting) return;
@@ -36,49 +45,42 @@ export function PairingStatusScreen({
 
   return (
     <KeyboardAvoidingView automaticOffset behavior="padding" style={styles.screen}>
-      <ScreenScaffold description={describe(state)} eyebrow="安全建立 · 02" title="连接另一个人">
-        {identity ? (
+      <ScreenScaffold
+        description={setupCopy?.description ?? describe(state)}
+        eyebrow="安全建立 · 02"
+        title={setupCopy?.title ?? '连接另一个人'}
+      >
+        {state.status === 'unpaired' && !transportUnavailable && identity ? (
+          setupStep === 'identity-ready' ? (
+            <IdentityReadyStep
+              identity={identity}
+              onContinue={() => setSetupStep('method-picker')}
+            />
+          ) : setupStep === 'method-picker' ? (
+            <PairingMethodStep
+              onBack={() => setSetupStep('identity-ready')}
+              onChooseM2yId={() => setSetupStep('m2y-id')}
+            />
+          ) : (
+            <M2yIdInputStep
+              error={formError}
+              onBack={() => setSetupStep('method-picker')}
+              onChange={(value) => {
+                setTargetM2yId(value);
+                setFormError(null);
+              }}
+              onSubmit={() => void submit()}
+              submitting={submitting}
+              value={targetM2yId}
+            />
+          )
+        ) : identity ? (
           <View style={styles.card}>
-            <Text style={styles.cardLabel}>
-              {state.status === 'unpaired' ? '服务端已登记 · 你的 M2Y-ID' : '你的 M2Y-ID'}
-            </Text>
+            <Text style={styles.cardLabel}>你的 M2Y-ID</Text>
             <Text style={styles.identityValue}>{identity.m2yId}</Text>
             <Text style={styles.cardBody}>
               M2Y 只维护一段双人关系。收到对方 ID 后仍需双方线下核对安全号码，才算连接成立。
             </Text>
-          </View>
-        ) : null}
-        {state.status === 'unpaired' && !transportUnavailable ? (
-          <View style={styles.form}>
-            <View style={styles.formCopy}>
-              <Text style={styles.formTitle}>输入对方的 M2Y-ID</Text>
-              <Text style={styles.formBody}>
-                这一步只发送端到端加密的连接请求。对方接受后，你们还需要当面核对安全号码。
-              </Text>
-            </View>
-            <TextInput
-              accessibilityLabel="对方的 M2Y-ID"
-              autoCapitalize="characters"
-              autoCorrect={false}
-              editable={!submitting}
-              onChangeText={(value) => {
-                setTargetM2yId(value);
-                setFormError(null);
-              }}
-              onSubmitEditing={() => void submit()}
-              placeholder="M2Y-XXXX-XXXX-XXXX-XXXX"
-              placeholderTextColor={colors.inkFaint}
-              returnKeyType="send"
-              spellCheck={false}
-              style={styles.input}
-              value={targetM2yId}
-            />
-            {formError ? <Text style={styles.formError}>{formError}</Text> : null}
-            <PrimaryButton
-              disabled={submitting}
-              label={submitting ? '正在发送…' : '发送配对请求'}
-              onPress={() => void submit()}
-            />
           </View>
         ) : null}
         {state.status === 'outgoingPending' ? (
@@ -118,6 +120,28 @@ export function PairingStatusScreen({
       </ScreenScaffold>
     </KeyboardAvoidingView>
   );
+}
+
+function describeSetup(step: PairingSetupStep): { title: string; description: string } {
+  switch (step) {
+    case 'identity-ready':
+      return {
+        title: '身份已在本机创建',
+        description: '不需要手机号、邮箱或通讯录。你的身份已经安全地生成在这台设备上。',
+      };
+    case 'method-picker':
+      return {
+        title: '配对方式',
+        description: '选择你们现在最方便的连接方式。',
+      };
+    case 'm2y-id':
+      return {
+        title: '输入 M2Y-ID',
+        description: '让 TA 把 M2Y-ID 发给你，然后在这里发起连接请求。',
+      };
+    default:
+      return assertNever(step);
+  }
 }
 
 function pairingErrorMessage(
@@ -202,28 +226,6 @@ const styles = StyleSheet.create({
   cardLabel: { ...typography.label, color: colors.accent, textTransform: 'uppercase' },
   identityValue: { ...typography.title, color: colors.surface },
   cardBody: { ...typography.body, color: colors.inkFaint },
-  form: {
-    gap: spacing.md,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surfaceRaised,
-  },
-  formCopy: { gap: spacing.xs },
-  formTitle: { ...typography.title, color: colors.ink },
-  formBody: { ...typography.body, color: colors.inkMuted },
-  input: {
-    minHeight: 54,
-    paddingHorizontal: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    color: colors.ink,
-    ...typography.body,
-  },
-  formError: { ...typography.caption, color: colors.danger },
   pendingCard: {
     gap: spacing.sm,
     padding: spacing.lg,

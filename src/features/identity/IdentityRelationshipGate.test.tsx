@@ -1,4 +1,5 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import * as Clipboard from 'expo-clipboard';
 import { AppState, Text } from 'react-native';
 
 import type { PublicConfigResult } from '@/application/config/contracts';
@@ -116,16 +117,36 @@ describe('IdentityRelationshipGate', () => {
     expect(view.queryByText(/服务端已登记/u)).toBeNull();
   });
 
-  it('服务端注册和 native receipt 提交后展示真实登记结果', async () => {
+  it('按原型从本机身份进入配对方式，再通过 M2Y-ID 发起真实请求', async () => {
     const { controller, view } = await renderGate(
       { status: 'unpaired', identity },
       reachableConfig,
     );
 
     expect(view.queryByText('private workspace')).toBeNull();
-    expect(view.getByText('服务端已登记 · 你的 M2Y-ID')).toBeTruthy();
+    expect(view.getByText('身份已在本机创建')).toBeTruthy();
     expect(view.getByText(identity.m2yId)).toBeTruthy();
-    expect(view.getByText('身份已登记，目前还没有建立任何关系。')).toBeTruthy();
+    expect(view.queryByLabelText('对方的 M2Y-ID')).toBeNull();
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('复制 M2Y-ID'));
+    });
+    await waitFor(() => expect(Clipboard.setStringAsync).toHaveBeenCalledWith(identity.m2yId));
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('继续设置配对方式'));
+    });
+    expect(view.getByText('配对方式')).toBeTruthy();
+    expect(view.getByLabelText('扫描二维码，暂未开放').props.accessibilityState).toEqual({
+      disabled: true,
+    });
+    expect(view.getByLabelText('一次性握手码，暂未开放').props.accessibilityState).toEqual({
+      disabled: true,
+    });
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('输入 M2Y-ID，让 TA 把 ID 发给你'));
+    });
     expect(view.getByLabelText('对方的 M2Y-ID')).toBeTruthy();
 
     await act(async () => {
@@ -137,6 +158,18 @@ describe('IdentityRelationshipGate', () => {
     await waitFor(() =>
       expect(controller.startM2yPairing).toHaveBeenCalledWith('m2y-jklm-npqr-stuv-wxyz'),
     );
+  });
+
+  it('复制 M2Y-ID 失败时保留可手动复制的退路', async () => {
+    jest.mocked(Clipboard.setStringAsync).mockRejectedValueOnce(new Error('native unavailable'));
+    const { view } = await renderGate({ status: 'unpaired', identity }, reachableConfig);
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('复制 M2Y-ID'));
+    });
+
+    expect(view.getByText('复制失败，请长按上方 ID 手动复制。')).toBeTruthy();
+    expect(view.getByText(identity.m2yId).props.selectable).toBe(true);
   });
 
   it('已提交首包后展示等待对方确认和目标 M2Y-ID', async () => {

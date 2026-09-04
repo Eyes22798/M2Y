@@ -101,7 +101,7 @@ native PQXDH 首包/outbox 同事务提交 → 服务端 submit → native ACK �
 - [x] Implement foreground-aware cancellable polling with bounded backoff and cursor persistence.
 - [x] 将 M2Y-ID native 首包 outbox 接到服务端 delivery/ack，不发布乐观状态。
 - [x] 实现严格的 M2Y-ID 输入归一化与通用查询失败提示。
-- [ ] 为本机格式化 M2Y-ID 增加安全的复制入口。
+- [x] 为本机格式化 M2Y-ID 增加安全的复制入口。
 - [ ] Install SDK-compatible camera/clipboard/SVG dependencies through Expo; implement QR display/scan/deep link and permission-denied fallback.
 - [ ] Implement 8-character handshake-code display/input/countdown and expiry recovery.
 - [ ] Unit/integration test all three methods converge to the same pending request state.
@@ -176,6 +176,26 @@ native PQXDH 首包/outbox 同事务提交 → 服务端 submit → native ACK �
    但 ADB daemon 重启后设备列表仍为空，不能把该 instrumentation 记录为真机通过。新 ARM64 APK
    110,083,588 bytes，`native-code: 'arm64-v8a'`，SHA-256
    `96516AEBF56DE39175C8DCDFA7BDCF60A5957B7D427BA2AA19214462E75A1AB9`。
+
+### E4 原型优先的身份与配对方式切片
+
+1. 2026-09-04 起不再把整个长画布当成一个实现单元。当前页面内步骤按原型收窄为“身份已在本机创建 →
+   配对方式 → 输入 M2Y-ID”，不新增 controller、服务端或 native 协议入口。
+2. 身份页展示 controller 已提交的真实 M2Y-ID，使用 Expo SDK 兼容的 Clipboard API 完成复制；复制
+   失败时允许长按文本手动复制，不把失败异常或敏感信息显示给用户。
+3. 配对方式页保留原型中的扫码、M2Y-ID 和一次性握手码。只有已经真实接通的 M2Y-ID 可操作；扫码和
+   握手码带可访问的禁用状态与“暂未开放”说明，避免静态页面被误认为可用功能。
+4. 页面步骤、输入草稿和复制反馈均为 screen-local state；只有现有 `startM2yPairing` 成功后才由
+   controller 发布 `outgoingPending`，没有增加乐观成功状态。
+5. 本切片定向组件测试覆盖复制、逐步导航、未开放入口和真实 M2Y-ID 提交。2026-09-04 完整 Jest
+   34 suites / 273 tests、typecheck、lint、依赖边界、配置检查和 Android export 通过；新增 Clipboard
+   原生模块已被 Expo autolinking 识别。
+6. ARM64 debug APK 构建通过，117,128,748 bytes，仅含 `arm64-v8a`，SHA-256
+   `C43B5FFB86DB4AE3FC5721784D2AC10C75909A5D5B6C73DF9F4A0068311151D0`。ADB 设备列表为空，
+   因此复制按钮、页面视觉和输入法遮挡仍需真机补验，不能记录为真机通过。
+7. 全仓 `format:check` 只被任务开始前已存在且未跟踪的 `metro.config.js` 阻断；本切片文件的 Prettier
+   检查通过。Expo Doctor 的唯一失败是仓库原有 9 个 Expo 补丁版本整体落后一版，本切片没有借机
+   扩大为 SDK 依赖升级。
 
 ## F. Request review, safety number and Figma-aligned UI
 

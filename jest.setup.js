@@ -79,6 +79,9 @@ jest.mock('expo-crypto', () => ({
   getRandomBytesAsync: async (count) => new Uint8Array(count),
   randomUUID: () => '00000000-0000-4000-8000-000000000000',
 }));
+jest.mock('expo-clipboard', () => ({
+  setStringAsync: jest.fn(async () => true),
+}));
 jest.mock('expo-file-system', () => ({
   File: class File {
     exists = false;
