@@ -168,8 +168,8 @@ native PQXDH 首包/outbox 同事务提交 → 服务端 submit → native ACK �
    ratchet 状态而误报损坏，也不会创建第二个 candidate。重启 inspection 只解密最早的有效待审核
    candidate，并拒绝 incoming/outgoing 同时可见的冲突状态。
 4. 页面仅展示 native 已提交 candidate 的对方 M2Y-ID 和“尚未接受”说明，不把 transport 明文字段
-   当作身份。接受/拒绝按钮本切片刻意不伪接：现有 native decision outbox 尚未携带服务端 `/respond`
-   所需的加密 packet，这是下一纵向切片必须解决的真实阻塞点。
+   当作身份。此阶段尚未提供接受/拒绝，因为当时 native decision outbox 未携带服务端 `/respond`
+   所需的加密 packet；该阻塞已由下方 E5 纵向切片消除。
 5. 2026-08-28 自动化证据：根目录 34 suites / 272 tests 全绿；typecheck、lint、format、
    dependency-cruiser、config 全绿；native JVM 8 suites / 56 tests 通过，
    androidTest Java 编译通过。新增 `incomingPqxdhPacketDecryptsPersistsAndReplaysIdempotently` 已编译，
@@ -197,8 +197,33 @@ native PQXDH 首包/outbox 同事务提交 → 服务端 submit → native ACK �
    检查通过。Expo Doctor 的唯一失败是仓库原有 9 个 Expo 补丁版本整体落后一版，本切片没有借机
    扩大为 SDK 依赖升级。
 
+### E5 接收方审核、响应与安全码展示切片
+
+1. 待审核页面按原型补齐“接受并核对安全码”和“拒绝请求”。按钮只调用 identity controller；
+   页面不直接访问 native 或服务端，也不乐观发布成功状态。
+2. native 使用接收首包时已经建立的 libsignal 双棘轮会话生成 `pair-response` 密文。候选状态、
+   接受时生成的 60 位 NumericFingerprint、安全码加密记录和响应 outbox 在同一 SQLite 事务提交；
+   拒绝同时写入重放 tombstone。
+3. 应用层严格绑定 request、action、operation、响应密文和服务端 accepted/rejected 回执。网络中断
+   后从 native outbox 原样补交同一响应；只有服务端回执和 native ACK 都成功后，才发布拒绝结果或
+   进入安全码页面。
+4. 接受后使用 `awaitingSafetyVerification` 恢复 12 组、每组 5 位的 libsignal 安全码。安全码只在
+   核对页面短暂展示和复制，不写日志、分析或普通持久层；进程重启后从 native 加密检查点恢复。
+5. 本切片刻意停在“真实安全码可核对”：发起方消费响应、双方“号码一致/不一致”、双端确认和关系
+   激活仍属于下一纵向切片，不能据此声明完整双端配对已经完成。
+6. 2026-09-05 自动化证据：根目录完整 Jest 35 suites / 280 tests；服务端 9 suites / 24 tests；
+   TypeScript typecheck、ESLint、dependency-cruiser、配置检查、切片文件 Prettier 与
+   `git diff --check` 通过。native JVM 9 suites / 59 tests、0 failures/errors，androidTest Java 编译通过。
+7. ARM64 debug APK 构建成功，117,128,748 bytes，仅含 `arm64-v8a`，SHA-256
+   `137166967273CFFA95F29830431D8FAA5490AD392C625416B10CD5A1DA856DB0`。构建前后两次
+   `adb devices -l` 均为空，因此本轮不能声称物理设备 instrumentation 或页面视觉已通过。
+   全仓 `format:check` 仍只被任务开始前已存在且未跟踪的 `metro.config.js` 阻断，本次未修改或纳入它。
+
 ## F. Request review, safety number and Figma-aligned UI
 
+- [x] 接收方展示可信请求摘要，并通过真实加密响应完成接受/拒绝。
+- [x] 接受后展示并复制 native libsignal 生成的 12 组安全码，支持进程重启恢复。
+- [ ] 发起方消费加密响应，双方完成“号码一致/不一致”并激活唯一关系。
 - [ ] Replace `AuthPlaceholderScreen` usage with create identity, registration, method chooser and pairing state screens.
 - [ ] Implement outgoing wait/cancel/retry and incoming accept/reject with clear target/requester summaries.
 - [ ] Implement formatted safety number, copy, “号码一致” and “号码不一致”; both-side confirmation is mandatory.

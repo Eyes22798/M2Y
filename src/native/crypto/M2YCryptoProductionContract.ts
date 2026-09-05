@@ -63,12 +63,39 @@ export type ProductionIdentityIncomingReview = ProductionIdentitySummary &
     status: 'incomingReview';
   }>;
 
+export type ProductionIdentityAwaitingSafetyVerification = ProductionIdentitySummary &
+  Readonly<{
+    expiresAtMs: number;
+    method: 'm2y-id';
+    peerDeviceId: string;
+    peerM2yId: string;
+    peerStableIdentityId: string;
+    registeredAtMs: number;
+    requestId: string;
+    safetyNumber: readonly [
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+    ];
+    status: 'awaitingSafetyVerification';
+  }>;
+
 export type ProductionIdentityInspection =
   | ProductionIdentityAbsent
   | ProductionIdentityPendingRegistration
   | ProductionIdentityUnpaired
   | ProductionIdentityOutgoingPending
-  | ProductionIdentityIncomingReview;
+  | ProductionIdentityIncomingReview
+  | ProductionIdentityAwaitingSafetyVerification;
 
 export type ProductionOneTimePreKey = Readonly<{
   id: number;
@@ -244,7 +271,70 @@ export function decodeProductionIdentityInspection(value: unknown): ProductionId
       status: 'incomingReview',
     };
   }
+  if (
+    value.status === 'awaitingSafetyVerification' &&
+    hasExactNativeKeys(
+      value,
+      identityKeys(value, [
+        'expiresAtMs',
+        'method',
+        'peerDeviceId',
+        'peerM2yId',
+        'peerStableIdentityId',
+        'registeredAtMs',
+        'requestId',
+        'safetyNumber',
+        'status',
+      ]),
+    ) &&
+    value.method === 'm2y-id' &&
+    isEpochMs(value.registeredAtMs) &&
+    isEpochMs(value.expiresAtMs) &&
+    isUuidV4(value.requestId) &&
+    isUuidV4(value.peerDeviceId) &&
+    isUuidV4(value.peerStableIdentityId) &&
+    isM2yId(value.peerM2yId)
+  ) {
+    return {
+      ...summary,
+      expiresAtMs: value.expiresAtMs,
+      method: 'm2y-id',
+      peerDeviceId: value.peerDeviceId,
+      peerM2yId: value.peerM2yId,
+      peerStableIdentityId: value.peerStableIdentityId,
+      registeredAtMs: value.registeredAtMs,
+      requestId: value.requestId,
+      safetyNumber: decodeSafetyNumber(value.safetyNumber),
+      status: 'awaitingSafetyVerification',
+    };
+  }
   return invalidNativeResponse();
+}
+
+function decodeSafetyNumber(
+  value: unknown,
+): ProductionIdentityAwaitingSafetyVerification['safetyNumber'] {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 12 ||
+    !value.every((group) => typeof group === 'string' && /^\d{5}$/u.test(group))
+  ) {
+    return invalidNativeResponse();
+  }
+  return [
+    value[0],
+    value[1],
+    value[2],
+    value[3],
+    value[4],
+    value[5],
+    value[6],
+    value[7],
+    value[8],
+    value[9],
+    value[10],
+    value[11],
+  ];
 }
 
 export function decodeProductionIdentityRegistration(

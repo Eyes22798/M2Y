@@ -9,7 +9,8 @@ import {
 
 /**
  * native 生产配对合同。首包作为不透明密文允许短暂穿过 JavaScript 交给 transport；私钥、会话记录、
- * 安全号码和解密后的 peer identity 永不越过边界。其余字段只包含不透明 ID、枚举和计数。
+ * 解密后的 peer identity 永不越过边界。安全号码仅在用户核对阶段以 12 组数字短暂进入 UI，
+ * 其余字段只包含不透明 ID、枚举和计数。
  *
  * 枚举字面量与 native 持久值完全一致；这里若擅自放宽，会接受 native 永远不会产生的状态。
  */
@@ -122,6 +123,39 @@ export type ProductionPreparedPairingPacket = Readonly<{
   targetM2yId: string;
   targetStableIdentityId: string;
 }>;
+
+export type ProductionSafetyNumberGroups = readonly [
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+];
+
+/** 接受或拒绝已经与响应密文在 native 事务内一起提交。 */
+export type ProductionPreparedPairingResponse =
+  | Readonly<{
+      operationId: string;
+      packet: string;
+      requestId: string;
+      safetyNumber: ProductionSafetyNumberGroups;
+      schemaVersion: 1;
+      status: 'accepted';
+    }>
+  | Readonly<{
+      operationId: string;
+      packet: string;
+      requestId: string;
+      schemaVersion: 1;
+      status: 'rejected';
+    }>;
 
 /** Pending transport work in the native insertion order the store guarantees. */
 export type ProductionPairingOutbox = Readonly<{
@@ -263,6 +297,48 @@ export function decodeProductionPreparedPairingPacket(
   };
 }
 
+export function decodeProductionPreparedPairingResponse(
+  value: unknown,
+): ProductionPreparedPairingResponse {
+  if (!isNativeRecord(value)) return invalidNativeResponse();
+  const accepted = value.status === 'accepted';
+  const expectedKeys = [
+    'operationId',
+    'packet',
+    'requestId',
+    ...(accepted ? ['safetyNumber'] : []),
+    'schemaVersion',
+    'status',
+  ];
+  if (
+    !hasExactNativeKeys(value, expectedKeys) ||
+    value.schemaVersion !== 1 ||
+    !isUuidV4(value.operationId) ||
+    !isUuidV4(value.requestId) ||
+    !isOpaquePacket(value.packet) ||
+    (value.status !== 'accepted' && value.status !== 'rejected')
+  ) {
+    return invalidNativeResponse();
+  }
+  if (accepted) {
+    return {
+      operationId: value.operationId,
+      packet: value.packet,
+      requestId: value.requestId,
+      safetyNumber: decodeSafetyNumberGroups(value.safetyNumber),
+      schemaVersion: 1,
+      status: 'accepted',
+    };
+  }
+  return {
+    operationId: value.operationId,
+    packet: value.packet,
+    requestId: value.requestId,
+    schemaVersion: 1,
+    status: 'rejected',
+  };
+}
+
 export function decodeProductionPairingOutbox(value: unknown): ProductionPairingOutbox {
   if (
     !isNativeRecord(value) ||
@@ -274,7 +350,9 @@ export function decodeProductionPairingOutbox(value: unknown): ProductionPairing
   }
 
   const items = value.items.map((item): ProductionPairingOutboxItem => {
-    const carriesPacket = isNativeRecord(item) && item.packetType === 'pair-request';
+    const isRequest = isNativeRecord(item) && item.packetType === 'pair-request';
+    const isResponse = isNativeRecord(item) && item.packetType === 'pair-response';
+    const carriesPacket = isRequest || isResponse;
     const packet = isNativeRecord(item) ? item.packet : undefined;
     if (
       !isNativeRecord(item) ||
@@ -285,38 +363,41 @@ export function decodeProductionPairingOutbox(value: unknown): ProductionPairing
         'packetType',
         'requestId',
         'retryCount',
-        ...(carriesPacket
+        ...(isRequest
           ? ['expiresAtMs', 'packet', 'targetDeviceId', 'targetM2yId', 'targetStableIdentityId']
-          : []),
+          : isResponse
+            ? ['packet']
+            : []),
       ]) ||
       !isUuidV4(item.operationId) ||
       !isUuidV4(item.requestId) ||
       !isEpochMs(item.createdAtMs) ||
       !isNonNegativeSafeInteger(item.retryCount) ||
       !isKnownIntent(item.packetType, item.decision) ||
-      (carriesPacket &&
+      (isRequest &&
         (!isOpaquePacket(packet) ||
           !isEpochMs(item.expiresAtMs) ||
           !isUuidV4(item.targetDeviceId) ||
           !isM2yId(item.targetM2yId) ||
-          !isUuidV4(item.targetStableIdentityId)))
+          !isUuidV4(item.targetStableIdentityId))) ||
+      (isResponse && !isOpaquePacket(packet))
     ) {
       return invalidNativeResponse();
     }
     return {
       createdAtMs: item.createdAtMs,
       decision: item.decision as ProductionPairingIntentDecision,
-      ...(carriesPacket && isEpochMs(item.expiresAtMs) ? { expiresAtMs: item.expiresAtMs } : {}),
+      ...(isRequest && isEpochMs(item.expiresAtMs) ? { expiresAtMs: item.expiresAtMs } : {}),
       operationId: item.operationId,
       ...(carriesPacket && isOpaquePacket(packet) ? { packet } : {}),
       packetType: item.packetType as ProductionPairingPacketType,
       requestId: item.requestId,
       retryCount: item.retryCount,
-      ...(carriesPacket && isUuidV4(item.targetDeviceId)
+      ...(isRequest && isUuidV4(item.targetDeviceId)
         ? { targetDeviceId: item.targetDeviceId }
         : {}),
-      ...(carriesPacket && isM2yId(item.targetM2yId) ? { targetM2yId: item.targetM2yId } : {}),
-      ...(carriesPacket && isUuidV4(item.targetStableIdentityId)
+      ...(isRequest && isM2yId(item.targetM2yId) ? { targetM2yId: item.targetM2yId } : {}),
+      ...(isRequest && isUuidV4(item.targetStableIdentityId)
         ? { targetStableIdentityId: item.targetStableIdentityId }
         : {}),
     };
@@ -325,6 +406,30 @@ export function decodeProductionPairingOutbox(value: unknown): ProductionPairing
     return invalidNativeResponse();
   }
   return { items, schemaVersion: 1 };
+}
+
+function decodeSafetyNumberGroups(value: unknown): ProductionSafetyNumberGroups {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 12 ||
+    !value.every((group) => typeof group === 'string' && /^\d{5}$/u.test(group))
+  ) {
+    return invalidNativeResponse();
+  }
+  return [
+    value[0],
+    value[1],
+    value[2],
+    value[3],
+    value[4],
+    value[5],
+    value[6],
+    value[7],
+    value[8],
+    value[9],
+    value[10],
+    value[11],
+  ];
 }
 
 function isM2yId(value: unknown): value is string {

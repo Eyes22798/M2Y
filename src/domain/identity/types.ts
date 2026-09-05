@@ -27,7 +27,20 @@ export type RelationshipSummary = Readonly<{
 }>;
 
 export type SafetyNumberDisplay = Readonly<{
-  groups: readonly [string, string, string, string, string, string];
+  groups: readonly [
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+  ];
 }>;
 
 export type IdentityRelationshipState =
@@ -70,7 +83,12 @@ export type IdentityRelationshipState =
   | Readonly<{
       status: 'networkFailed';
       identity: IdentitySummary;
-      retryFrom: 'registering' | 'unpaired' | 'outgoingPending' | 'awaitingSafetyVerification';
+      retryFrom:
+        | 'registering'
+        | 'unpaired'
+        | 'outgoingPending'
+        | 'incomingReview'
+        | 'awaitingSafetyVerification';
     }>
   | Readonly<{ status: 'identityChanged'; identity: IdentitySummary; peer: PeerSummary }>
   | Readonly<{ status: 'recoveryRequired'; code: string }>
@@ -119,6 +137,12 @@ export type IdentityRelationshipEvent =
       identity: IdentitySummary;
       request: PairingRequestSummary;
     }>
+  | Readonly<{
+      type: 'inspectAwaitingSafetyVerification';
+      identity: IdentitySummary;
+      request: PairingRequestSummary;
+      safetyNumber: SafetyNumberDisplay;
+    }>
   | Readonly<{ type: 'identityCreationStarted' }>
   | Readonly<{
       type: 'identityPrepared';
@@ -147,7 +171,12 @@ export type IdentityRelationshipEvent =
   | Readonly<{ type: 'safetyMismatch' }>
   | Readonly<{
       type: 'networkFailed';
-      retryFrom: 'registering' | 'unpaired' | 'outgoingPending' | 'awaitingSafetyVerification';
+      retryFrom:
+        | 'registering'
+        | 'unpaired'
+        | 'outgoingPending'
+        | 'incomingReview'
+        | 'awaitingSafetyVerification';
     }>
   | Readonly<{ type: 'identityChanged'; peer: PeerSummary }>
   | Readonly<{ type: 'recoveryRequired'; code: string }>

@@ -14,6 +14,7 @@ import com.m2y.crypto.production.PairingRecordCodec.PeerCandidate;
 import com.m2y.crypto.production.PairingTransactionStore.InboundPacket;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -21,6 +22,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.signal.libsignal.protocol.IdentityKeyPair;
 
 /**
  * The pairing half of the production store against a real database and a real Keystore. The
@@ -31,17 +33,19 @@ import org.junit.runner.RunWith;
 @RunWith(AndroidJUnit4.class)
 public final class PairingTransactionStoreInstrumentedTest {
   private static final long ONE_MINUTE_MS = 60_000;
-  private static final String PEER_KEY_A = "BXk3ZGVtb0lkZW50aXR5S2V5QmFzZTY0VXJs";
-  private static final String PEER_KEY_B = "BXk3c2Vjb25kSWRlbnRpdHlLZXlCYXNlNjRVcmw";
   private static final String RECEIPT = "receipt_pairing_1";
 
   private Context context;
   private ProductionIdentityManager manager;
+  private String peerKeyA;
+  private String peerKeyB;
 
   @Before
   public void setUp() throws Exception {
     context = ApplicationProvider.getApplicationContext();
-    manager = new ProductionIdentityManager(context);
+    peerKeyA = encodedIdentityKey();
+    peerKeyB = encodedIdentityKey();
+    manager = testManager();
     manager.resetProductionIdentity();
     Map<String, Object> prepared = manager.prepareIdentityRegistration("Pairing Test");
     manager.commitIdentityRegistration((String) prepared.get("operationId"), RECEIPT);
@@ -61,15 +65,16 @@ public final class PairingTransactionStoreInstrumentedTest {
     String requestId = UUID.randomUUID().toString();
     String routeId = UUID.randomUUID().toString();
 
-    assertEquals("apply", stage(requestId, routeId, PEER_KEY_A, ONE_MINUTE_MS));
-    assertEquals("duplicate", stage(requestId, routeId, PEER_KEY_A, ONE_MINUTE_MS));
+    assertEquals("apply", stage(requestId, routeId, peerKeyA, ONE_MINUTE_MS));
+    assertEquals("duplicate", stage(requestId, routeId, peerKeyA, ONE_MINUTE_MS));
 
     Map<String, Object> accepted =
-        new ProductionIdentityManager(context).respondToPairingRequest(requestId, "accept");
+        testManager().respondToPairingRequest(requestId, "accept");
 
     assertEquals("accepted", accepted.get("status"));
     assertEquals(requestId, accepted.get("requestId"));
     assertNotNull(accepted.get("operationId"));
+    assertEquals(12, ((List<?>) accepted.get("safetyNumber")).size());
   }
 
   /**
@@ -80,7 +85,7 @@ public final class PairingTransactionStoreInstrumentedTest {
   public void aRejectedRequestIsRefusedForeverAndCommitsExactlyOnePacket() throws Exception {
     String requestId = UUID.randomUUID().toString();
     String routeId = UUID.randomUUID().toString();
-    stage(requestId, routeId, PEER_KEY_A, ONE_MINUTE_MS);
+    stage(requestId, routeId, peerKeyA, ONE_MINUTE_MS);
 
     Map<String, Object> rejected = manager.respondToPairingRequest(requestId, "reject");
     String operationId = (String) rejected.get("operationId");
@@ -92,7 +97,7 @@ public final class PairingTransactionStoreInstrumentedTest {
     assertEquals(1, queued.size());
     assertEquals("pair-response", queued.get(0).get("packetType"));
     assertEquals("reject", queued.get(0).get("decision"));
-    assertEquals("tombstoned", stage(requestId, routeId, PEER_KEY_B, ONE_MINUTE_MS));
+    assertEquals("tombstoned", stage(requestId, routeId, peerKeyB, ONE_MINUTE_MS));
 
     manager.ackPairingOutbox(operationId, RECEIPT);
     assertTrue(outboxItems().isEmpty());
@@ -108,7 +113,7 @@ public final class PairingTransactionStoreInstrumentedTest {
   @Test
   public void acceptingThenConfirmingCommitsOneResponseAndOneVerifyPacket() throws Exception {
     String requestId = UUID.randomUUID().toString();
-    stage(requestId, UUID.randomUUID().toString(), PEER_KEY_A, ONE_MINUTE_MS);
+    stage(requestId, UUID.randomUUID().toString(), peerKeyA, ONE_MINUTE_MS);
 
     String responseId =
         (String) manager.respondToPairingRequest(requestId, "accept").get("operationId");
@@ -137,12 +142,12 @@ public final class PairingTransactionStoreInstrumentedTest {
     String requestId = UUID.randomUUID().toString();
     String routeId = UUID.randomUUID().toString();
     String pairId = UUID.randomUUID().toString();
-    activate(requestId, routeId, PEER_KEY_A, pairId);
+    activate(requestId, routeId, peerKeyA, pairId);
 
     assertEquals(
         "alreadyActive", manager.activatePairedRelationship(requestId, pairId).get("decision"));
-    assertEquals("duplicate", stage(requestId, routeId, PEER_KEY_A, ONE_MINUTE_MS));
-    assertEquals("tombstoned", stage(requestId, routeId, PEER_KEY_B, ONE_MINUTE_MS));
+    assertEquals("duplicate", stage(requestId, routeId, peerKeyA, ONE_MINUTE_MS));
+    assertEquals("tombstoned", stage(requestId, routeId, peerKeyB, ONE_MINUTE_MS));
 
     ProductionIdentityDatabase.RelationshipRow row = relationship();
     assertEquals(pairId, row.pairId());
@@ -160,16 +165,16 @@ public final class PairingTransactionStoreInstrumentedTest {
     String firstRequest = UUID.randomUUID().toString();
     String firstRoute = UUID.randomUUID().toString();
     String pairId = UUID.randomUUID().toString();
-    activate(firstRequest, firstRoute, PEER_KEY_A, pairId);
+    activate(firstRequest, firstRoute, peerKeyA, pairId);
 
-    String otherRequest = accepted(UUID.randomUUID().toString(), PEER_KEY_B);
+    String otherRequest = accepted(UUID.randomUUID().toString(), peerKeyB);
     assertEquals(
         "relationshipConflict",
         manager
             .activatePairedRelationship(otherRequest, UUID.randomUUID().toString())
             .get("decision"));
 
-    String changedRequest = accepted(firstRoute, PEER_KEY_B);
+    String changedRequest = accepted(firstRoute, peerKeyB);
     assertEquals(
         "peerIdentityChanged",
         manager.activatePairedRelationship(changedRequest, pairId).get("decision"));
@@ -177,7 +182,7 @@ public final class PairingTransactionStoreInstrumentedTest {
     ProductionIdentityDatabase.RelationshipRow row = relationship();
     assertEquals(pairId, row.pairId());
     assertEquals(firstRoute, row.peerRouteId());
-    assertEquals(PEER_KEY_A, storedPeerKey(row));
+    assertEquals(peerKeyA, storedPeerKey(row));
   }
 
   /**
@@ -187,7 +192,7 @@ public final class PairingTransactionStoreInstrumentedTest {
   @Test
   public void reportingAMismatchResolvesTheRequestAndNeverActivates() throws Exception {
     String routeId = UUID.randomUUID().toString();
-    String requestId = accepted(routeId, PEER_KEY_A);
+    String requestId = accepted(routeId, peerKeyA);
 
     Map<String, Object> mismatch = manager.respondToPairingRequest(requestId, "mismatch");
     List<Map<String, Object>> queued = outboxItems();
@@ -199,7 +204,7 @@ public final class PairingTransactionStoreInstrumentedTest {
         "pairing-candidate-transition-invalid",
         () -> manager.activatePairedRelationship(requestId, UUID.randomUUID().toString()));
     assertNull(relationship());
-    assertEquals("tombstoned", stage(requestId, routeId, PEER_KEY_B, ONE_MINUTE_MS));
+    assertEquals("tombstoned", stage(requestId, routeId, peerKeyB, ONE_MINUTE_MS));
   }
 
   /**
@@ -210,7 +215,7 @@ public final class PairingTransactionStoreInstrumentedTest {
   public void theSweepRetiresAnAgedOutRequestWithoutTellingThePeer() throws Exception {
     String requestId = UUID.randomUUID().toString();
     String routeId = UUID.randomUUID().toString();
-    stage(requestId, routeId, PEER_KEY_A, 250);
+    stage(requestId, routeId, peerKeyA, 250);
     Thread.sleep(400);
 
     assertEquals(Integer.valueOf(1), manager.sweepPairingState().get("expiredCandidates"));
@@ -218,7 +223,7 @@ public final class PairingTransactionStoreInstrumentedTest {
     assertSafeFailure(
         "pairing-candidate-transition-invalid",
         () -> manager.respondToPairingRequest(requestId, "accept"));
-    assertEquals("tombstoned", stage(requestId, routeId, PEER_KEY_B, ONE_MINUTE_MS));
+    assertEquals("tombstoned", stage(requestId, routeId, peerKeyB, ONE_MINUTE_MS));
   }
 
   /** A packet whose window closed in transit leaves a tombstone instead of a candidate. */
@@ -227,17 +232,17 @@ public final class PairingTransactionStoreInstrumentedTest {
     String requestId = UUID.randomUUID().toString();
     String routeId = UUID.randomUUID().toString();
 
-    assertEquals("expired", stage(requestId, routeId, PEER_KEY_A, -1_000));
+    assertEquals("expired", stage(requestId, routeId, peerKeyA, -1_000));
     assertSafeFailure(
         "pairing-candidate-unknown", () -> manager.respondToPairingRequest(requestId, "accept"));
-    assertEquals("tombstoned", stage(requestId, routeId, PEER_KEY_B, ONE_MINUTE_MS));
+    assertEquals("tombstoned", stage(requestId, routeId, peerKeyB, ONE_MINUTE_MS));
     assertTrue(outboxItems().isEmpty());
   }
 
   /** A tampered candidate record rolls the activation back rather than pairing with a guess. */
   @Test
   public void aTamperedCandidateRecordFailsClosedInsteadOfActivating() throws Exception {
-    String requestId = accepted(UUID.randomUUID().toString(), PEER_KEY_A);
+    String requestId = accepted(UUID.randomUUID().toString(), peerKeyA);
     execSql(
         "UPDATE pairing_candidates SET candidate_ciphertext = ? WHERE request_id = ?",
         new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14},
@@ -256,7 +261,7 @@ public final class PairingTransactionStoreInstrumentedTest {
   @Test
   public void inboxMarkersAreKeptUntilNothingStillNeedsThem() throws Exception {
     String requestId = UUID.randomUUID().toString();
-    stage(requestId, UUID.randomUUID().toString(), PEER_KEY_A, ONE_MINUTE_MS);
+    stage(requestId, UUID.randomUUID().toString(), peerKeyA, ONE_MINUTE_MS);
     manager.respondToPairingRequest(requestId, "reject");
 
     assertEquals(Integer.valueOf(0), manager.sweepPairingState().get("removedInboxMarkers"));
@@ -284,7 +289,7 @@ public final class PairingTransactionStoreInstrumentedTest {
   @Test
   public void aMissingRecordKeyStopsEveryPairingAction() throws Exception {
     String requestId = UUID.randomUUID().toString();
-    stage(requestId, UUID.randomUUID().toString(), PEER_KEY_A, ONE_MINUTE_MS);
+    stage(requestId, UUID.randomUUID().toString(), peerKeyA, ONE_MINUTE_MS);
     deleteAlias(ProductionRecordCipher.KEY_ALIAS);
 
     assertSafeFailure("identity-key-missing", () -> manager.listPairingOutbox());
@@ -296,7 +301,7 @@ public final class PairingTransactionStoreInstrumentedTest {
   @Test
   public void theModuleBoundaryRefusesActionsThatWouldSkipTheProtocol() throws Exception {
     String requestId = UUID.randomUUID().toString();
-    stage(requestId, UUID.randomUUID().toString(), PEER_KEY_A, ONE_MINUTE_MS);
+    stage(requestId, UUID.randomUUID().toString(), peerKeyA, ONE_MINUTE_MS);
 
     assertSafeFailure(
         "pairing-candidate-action-invalid",
@@ -377,6 +382,21 @@ public final class PairingTransactionStoreInstrumentedTest {
             .decrypt("relationship", "peer-summary", 1, row.peerSummaryCiphertext());
     return PairingRecordCodec.decodeCandidate(new String(plaintext, StandardCharsets.UTF_8))
         .peerIdentityKey();
+  }
+
+  /** 测试只替换网络响应密文生成；候选、安全码和事务仍使用真实实现。 */
+  private ProductionIdentityManager testManager() {
+    return new ProductionIdentityManager(
+        context,
+        (connection, identity, registrationId, requestId, action, nowMs) ->
+            new ProductionPairingPacketCodec.ResponsePacket(
+                nowMs, action, "p".repeat(64), requestId));
+  }
+
+  private static String encodedIdentityKey() {
+    return Base64.getUrlEncoder()
+        .withoutPadding()
+        .encodeToString(IdentityKeyPair.generate().getPublicKey().serialize());
   }
 
   private void execSql(String sql, Object... args) {

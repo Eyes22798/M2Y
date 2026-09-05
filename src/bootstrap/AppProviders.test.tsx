@@ -36,6 +36,7 @@ describe('AppProviders', () => {
       createIdentity: async () => undefined,
       resetLocalData: async () => undefined,
       retry: async () => undefined,
+      respondToPairingRequest: async () => ({ ok: true }),
       startM2yPairing: async () => ({ ok: true }),
     };
     const runtime: AppRuntime = {

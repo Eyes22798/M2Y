@@ -44,6 +44,19 @@ export function toIdentityInspection(value: ProductionIdentityInspection): Ident
       },
     };
   }
+  if (value.status === 'awaitingSafetyVerification') {
+    return {
+      kind: 'awaitingSafetyVerification',
+      identity,
+      request: {
+        expiresAtMs: value.expiresAtMs,
+        method: 'm2y-id',
+        peer: { m2yId: value.peerM2yId, routeId: value.peerDeviceId },
+        requestId: value.requestId,
+      },
+      safetyNumber: { groups: value.safetyNumber },
+    };
+  }
   return { kind: 'unpaired', identity };
 }
 

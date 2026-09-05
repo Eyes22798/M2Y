@@ -2,7 +2,10 @@ import type {
   IdentityDraft,
   IdentityInspection,
   PendingPairingPacket,
+  PendingPairingResponse,
+  PairingResponseAction,
   PreparedPairingPacket,
+  PreparedPairingResponse,
   ProductionIdentityPort,
 } from '@/application/identity/contracts';
 import type { LeasedPublicBundle } from '@/application/pairing/contracts';
@@ -64,6 +67,28 @@ export class M2YCryptoProductionIdentityPort implements ProductionIdentityPort {
     };
   }
 
+  async preparePairingResponse(
+    requestId: string,
+    action: PairingResponseAction,
+  ): Promise<PreparedPairingResponse> {
+    const { respondToM2YPairingRequest } = await import('./M2YCryptoProductionAdapter');
+    const prepared = await respondToM2YPairingRequest(requestId, action);
+    return prepared.status === 'accepted'
+      ? {
+          action: 'accept',
+          operationId: prepared.operationId,
+          packet: prepared.packet,
+          requestId: prepared.requestId,
+          safetyNumber: { groups: prepared.safetyNumber },
+        }
+      : {
+          action: 'reject',
+          operationId: prepared.operationId,
+          packet: prepared.packet,
+          requestId: prepared.requestId,
+        };
+  }
+
   async listPendingPairingPackets(): Promise<readonly PendingPairingPacket[]> {
     const { listM2YPairingOutbox } = await import('./M2YCryptoProductionAdapter');
     const outbox = await listM2YPairingOutbox();
@@ -89,6 +114,53 @@ export class M2YCryptoProductionIdentityPort implements ProductionIdentityPort {
           targetDeviceId: item.targetDeviceId,
           targetM2yId: item.targetM2yId,
           targetStableIdentityId: item.targetStableIdentityId,
+        },
+      ];
+    });
+  }
+
+  async listPendingPairingResponses(): Promise<readonly PendingPairingResponse[]> {
+    const { inspectM2YProductionIdentity, listM2YPairingOutbox } =
+      await import('./M2YCryptoProductionAdapter');
+    const [outbox, inspection] = await Promise.all([
+      listM2YPairingOutbox(),
+      inspectM2YProductionIdentity(),
+    ]);
+    return outbox.items.flatMap((item): readonly PendingPairingResponse[] => {
+      if (
+        item.packetType !== 'pair-response' ||
+        item.packet === undefined ||
+        (item.decision !== 'accept' && item.decision !== 'reject')
+      ) {
+        return [];
+      }
+      if (item.decision === 'accept') {
+        if (
+          inspection.status !== 'awaitingSafetyVerification' ||
+          inspection.requestId !== item.requestId
+        ) {
+          throw new Error('pairing-response-safety-number-binding-invalid');
+        }
+        return [
+          {
+            action: 'accept',
+            createdAtMs: item.createdAtMs,
+            operationId: item.operationId,
+            packet: item.packet,
+            requestId: item.requestId,
+            retryCount: item.retryCount,
+            safetyNumber: { groups: inspection.safetyNumber },
+          },
+        ];
+      }
+      return [
+        {
+          action: 'reject',
+          createdAtMs: item.createdAtMs,
+          operationId: item.operationId,
+          packet: item.packet,
+          requestId: item.requestId,
+          retryCount: item.retryCount,
         },
       ];
     });

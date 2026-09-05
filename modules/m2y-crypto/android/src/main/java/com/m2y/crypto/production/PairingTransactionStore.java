@@ -40,12 +40,16 @@ final class PairingTransactionStore {
   private final ProductionIdentityDatabase database;
   private final ProductionPairingProtocolEngine protocolEngine;
   private final ProductionRecordCipher recordCipher;
+  private final PairingResponsePacketFactory responsePacketFactory;
 
   PairingTransactionStore(
-      ProductionIdentityDatabase database, ProductionRecordCipher recordCipher) {
+      ProductionIdentityDatabase database,
+      ProductionRecordCipher recordCipher,
+      PairingResponsePacketFactory responsePacketFactory) {
     this.database = database;
     this.recordCipher = recordCipher;
     this.protocolEngine = new ProductionPairingProtocolEngine(database, recordCipher);
+    this.responsePacketFactory = responsePacketFactory;
   }
 
   /** An inbound pairing packet as the transport delivered it, before anything is trusted. */
@@ -118,6 +122,99 @@ final class PairingTransactionStore {
    * sides have confirmed the safety number.
    */
   Map<String, Object> resolveCandidate(
+      SQLiteDatabase connection,
+      ProductionIdentityDatabase.IdentityProjection localIdentity,
+      int localRegistrationId,
+      String requestId,
+      CandidateAction action,
+      long nowMs)
+      throws ProductionIdentityException {
+    connection.beginTransaction();
+    try {
+      ProductionIdentityDatabase.CandidateRow row = requireCandidate(connection, requestId);
+      CandidateStatus current = CandidateStatus.fromStored(row.status());
+      CandidateStatus next = PairingProtocolRules.resolveCandidate(current, action);
+      if (action != CandidateAction.ACCEPT && action != CandidateAction.REJECT) {
+        throw new ProductionIdentityException("pairing-response-action-invalid");
+      }
+
+      ProductionIdentityDatabase.OutboxRow existing =
+          database.pairingOutbox(connection, requestId, "pair-response");
+      if (existing != null) {
+        ProductionPairingPacketCodec.ResponsePacket packet =
+            protocolEngine.decodeResponseOutbox(existing);
+        if (!packet.action().equals(action.requested())) {
+          throw new ProductionIdentityException("pairing-response-binding-invalid");
+        }
+        String safetyDisplay = next == CandidateStatus.ACCEPTED ? decodeSafetyDisplay(row) : null;
+        connection.setTransactionSuccessful();
+        return responseResult(existing.operationId(), packet, next, safetyDisplay);
+      }
+
+      PeerCandidate candidate = decodeCandidate(row);
+      ProductionSignalProtocolStore signalStore =
+          new ProductionSignalProtocolStore(
+              connection, database, recordCipher, localRegistrationId, nowMs);
+      String safetyDisplay =
+          next == CandidateStatus.ACCEPTED
+              ? PairingSafetyNumber.create(
+                  localIdentity.stableIdentityId(),
+                  signalStore.getIdentityKeyPair(),
+                  candidate.peerStableIdentityId(),
+                  candidate.peerIdentityKey())
+              : null;
+      ProductionPairingPacketCodec.ResponsePacket packet =
+          responsePacketFactory.createResponsePacket(
+              connection,
+              localIdentity,
+              localRegistrationId,
+              requestId,
+              action.requested(),
+              nowMs);
+
+      byte[] safetyCiphertext =
+          safetyDisplay == null ? null : encryptSafetyNumber(requestId, safetyDisplay);
+      try {
+        database.updateCandidateResolution(
+            connection, requestId, next.stored(), safetyCiphertext, row.revision() + 1);
+      } finally {
+        if (safetyCiphertext != null) {
+          Arrays.fill(safetyCiphertext, (byte) 0);
+        }
+      }
+      TombstoneOutcome outcome = PairingProtocolRules.tombstoneFor(next);
+      if (outcome != null) {
+        writeTombstone(connection, requestId, outcome, row.expiresAtMs());
+      }
+
+      String operationId = ProductionIdentityIds.newOperationId();
+      byte[] plaintext =
+          ProductionPairingPacketCodec.encodeResponsePacket(packet)
+              .getBytes(StandardCharsets.UTF_8);
+      try {
+        database.insertOutbox(
+            connection,
+            operationId,
+            requestId,
+            "pair-response",
+            recordCipher.encrypt("outbox", operationId, RECORD_REVISION, plaintext),
+            nowMs);
+      } finally {
+        Arrays.fill(plaintext, (byte) 0);
+      }
+      connection.setTransactionSuccessful();
+      return responseResult(operationId, packet, next, safetyDisplay);
+    } catch (ProductionIdentityException e) {
+      throw e;
+    } catch (RuntimeException e) {
+      throw new ProductionIdentityException("pairing-candidate-store-failed", e);
+    } finally {
+      connection.endTransaction();
+    }
+  }
+
+  /** 处理取消与安全码不匹配等本地意图；这些动作不生成配对响应密文。 */
+  Map<String, Object> resolveCandidateIntent(
       SQLiteDatabase connection, String requestId, CandidateAction action, long nowMs)
       throws ProductionIdentityException {
     connection.beginTransaction();
@@ -125,15 +222,16 @@ final class PairingTransactionStore {
       ProductionIdentityDatabase.CandidateRow row = requireCandidate(connection, requestId);
       CandidateStatus current = CandidateStatus.fromStored(row.status());
       CandidateStatus next = PairingProtocolRules.resolveCandidate(current, action);
+      if (action == CandidateAction.ACCEPT || action == CandidateAction.REJECT) {
+        throw new ProductionIdentityException("pairing-response-action-required");
+      }
       if (next != current) {
         database.updateCandidateStatus(connection, requestId, next.stored(), row.revision() + 1);
       }
-
       TombstoneOutcome outcome = PairingProtocolRules.tombstoneFor(next);
       if (outcome != null) {
         writeTombstone(connection, requestId, outcome, row.expiresAtMs());
       }
-
       Map<String, Object> committed =
           commitIntent(connection, requestId, PairingProtocolRules.intentFor(action), nowMs);
       connection.setTransactionSuccessful();
@@ -237,6 +335,11 @@ final class PairingTransactionStore {
         item.put("targetDeviceId", packet.targetDeviceId());
         item.put("targetM2yId", packet.targetM2yId());
         item.put("targetStableIdentityId", packet.targetStableIdentityId());
+      } else if ("pair-response".equals(row.packetType())) {
+        ProductionPairingPacketCodec.ResponsePacket packet =
+            protocolEngine.decodeResponseOutbox(row);
+        item.put("decision", packet.action());
+        item.put("packet", packet.packet());
       } else {
         PairingIntent intent = decodeIntent(row.operationId(), row.ciphertext());
         if (!intent.requestId().equals(row.requestId())
@@ -382,6 +485,66 @@ final class PairingTransactionStore {
     } finally {
       Arrays.fill(plaintext, (byte) 0);
     }
+  }
+
+  List<String> decodeSafetyNumber(ProductionIdentityDatabase.CandidateRow row)
+      throws ProductionIdentityException {
+    String display = decodeSafetyDisplay(row, true);
+    return PairingSafetyNumber.groups(display);
+  }
+
+  private String decodeSafetyDisplay(ProductionIdentityDatabase.CandidateRow row)
+      throws ProductionIdentityException {
+    return decodeSafetyDisplay(row, false);
+  }
+
+  private String decodeSafetyDisplay(
+      ProductionIdentityDatabase.CandidateRow row, boolean requireAccepted)
+      throws ProductionIdentityException {
+    if (requireAccepted && CandidateStatus.fromStored(row.status()) != CandidateStatus.ACCEPTED) {
+      throw new ProductionIdentityException("pairing-safety-number-unavailable");
+    }
+    byte[] ciphertext = row.safetyDisplayCiphertext();
+    if (ciphertext == null) {
+      throw new ProductionIdentityException("pairing-safety-number-unavailable");
+    }
+    byte[] plaintext =
+        recordCipher.decrypt("safety-display", row.requestId(), RECORD_REVISION, ciphertext);
+    try {
+      String display = new String(plaintext, StandardCharsets.US_ASCII);
+      PairingSafetyNumber.validate(display);
+      return display;
+    } finally {
+      Arrays.fill(plaintext, (byte) 0);
+    }
+  }
+
+  private byte[] encryptSafetyNumber(String requestId, String display)
+      throws ProductionIdentityException {
+    byte[] plaintext = display.getBytes(StandardCharsets.US_ASCII);
+    try {
+      return recordCipher.encrypt("safety-display", requestId, RECORD_REVISION, plaintext);
+    } finally {
+      Arrays.fill(plaintext, (byte) 0);
+    }
+  }
+
+  private static Map<String, Object> responseResult(
+      String operationId,
+      ProductionPairingPacketCodec.ResponsePacket packet,
+      CandidateStatus status,
+      String safetyDisplay)
+      throws ProductionIdentityException {
+    Map<String, Object> result = new LinkedHashMap<>();
+    result.put("operationId", operationId);
+    result.put("packet", packet.packet());
+    result.put("requestId", packet.requestId());
+    if (status == CandidateStatus.ACCEPTED) {
+      result.put("safetyNumber", PairingSafetyNumber.groups(safetyDisplay));
+    }
+    result.put("schemaVersion", 1);
+    result.put("status", status.stored());
+    return Collections.unmodifiableMap(result);
   }
 
   private static Map<String, Object> merge(

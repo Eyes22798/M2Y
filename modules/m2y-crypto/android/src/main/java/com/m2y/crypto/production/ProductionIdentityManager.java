@@ -42,6 +42,10 @@ public final class ProductionIdentityManager {
   private final SecureRandom secureRandom;
 
   public ProductionIdentityManager(Context context) {
+    this(context, null);
+  }
+
+  ProductionIdentityManager(Context context, PairingResponsePacketFactory responsePacketFactory) {
     this(
         new ProductionIdentityDatabase(context),
         new ProductionRecordCipher(),
@@ -52,7 +56,8 @@ public final class ProductionIdentityManager {
               Thread thread = new Thread(runnable, "m2y-production-identity");
               thread.setDaemon(true);
               return thread;
-            }));
+            }),
+        responsePacketFactory);
   }
 
   ProductionIdentityManager(
@@ -61,13 +66,27 @@ public final class ProductionIdentityManager {
       ProductionDeviceSigner deviceSigner,
       SecureRandom secureRandom,
       ExecutorService executor) {
+    this(database, recordCipher, deviceSigner, secureRandom, executor, null);
+  }
+
+  ProductionIdentityManager(
+      ProductionIdentityDatabase database,
+      ProductionRecordCipher recordCipher,
+      ProductionDeviceSigner deviceSigner,
+      SecureRandom secureRandom,
+      ExecutorService executor,
+      PairingResponsePacketFactory responsePacketFactory) {
     this.database = database;
     this.recordCipher = recordCipher;
     this.deviceSigner = deviceSigner;
     this.secureRandom = secureRandom;
     this.executor = executor;
-    this.pairingStore = new PairingTransactionStore(database, recordCipher);
     this.pairingProtocolEngine = new ProductionPairingProtocolEngine(database, recordCipher);
+    this.pairingStore =
+        new PairingTransactionStore(
+            database,
+            recordCipher,
+            responsePacketFactory == null ? pairingProtocolEngine : responsePacketFactory);
   }
 
   /**
@@ -249,9 +268,22 @@ public final class ProductionIdentityManager {
         PairingProtocolRules.CandidateAction.fromRequested(action);
 
     return execute(
-        () ->
-            pairingStore.resolveCandidate(
-                requireRegisteredConnection(), requestId, resolved, System.currentTimeMillis()));
+        () -> {
+          SQLiteDatabase connection = requireRegisteredConnection();
+          long nowMs = System.currentTimeMillis();
+          if (resolved != PairingProtocolRules.CandidateAction.ACCEPT
+              && resolved != PairingProtocolRules.CandidateAction.REJECT) {
+            return pairingStore.resolveCandidateIntent(connection, requestId, resolved, nowMs);
+          }
+          ProductionIdentityDatabase.IdentityProjection identity = requireIdentity(connection);
+          return pairingStore.resolveCandidate(
+              connection,
+              identity,
+              loadLocalRegistrationId(connection),
+              requestId,
+              resolved,
+              nowMs);
+        });
   }
 
   public Map<String, Object> signDeviceRequest(String canonicalRequest)
@@ -414,7 +446,10 @@ public final class ProductionIdentityManager {
           pairingProtocolEngine.inspectAcknowledgedOutgoing(connection, nowMs);
       ProductionIdentityDatabase.CandidateRow incoming =
           database.firstReviewableCandidate(connection, nowMs);
-      if (outgoing != null && incoming != null) {
+      ProductionIdentityDatabase.CandidateRow accepted =
+          database.firstAcceptedCandidate(connection, nowMs);
+      if ((incoming != null && (outgoing != null || accepted != null))
+          || (outgoing != null && accepted != null)) {
         throw new ProductionIdentityException("pairing-visible-state-conflict");
       }
       if (incoming != null) {
@@ -429,6 +464,19 @@ public final class ProductionIdentityManager {
         result.put("peerStableIdentityId", candidate.peerStableIdentityId());
         result.put("requestId", incoming.requestId());
         result.put("status", "incomingReview");
+      } else if (accepted != null) {
+        PairingRecordCodec.PeerCandidate candidate = pairingStore.decodeCandidate(accepted);
+        if (!accepted.peerRouteId().equals(candidate.peerDeviceId())) {
+          throw new ProductionIdentityException("pairing-candidate-binding-invalid");
+        }
+        result.put("expiresAtMs", accepted.expiresAtMs());
+        result.put("method", "m2y-id");
+        result.put("peerDeviceId", candidate.peerDeviceId());
+        result.put("peerM2yId", candidate.peerM2yId());
+        result.put("peerStableIdentityId", candidate.peerStableIdentityId());
+        result.put("requestId", accepted.requestId());
+        result.put("safetyNumber", pairingStore.decodeSafetyNumber(accepted));
+        result.put("status", "awaitingSafetyVerification");
       } else if (outgoing == null) {
         result.put("status", "unpaired");
       } else {

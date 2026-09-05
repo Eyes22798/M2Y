@@ -22,6 +22,22 @@ const targetDeviceId = 'b64a01a1-546a-47f8-8920-52e9444fe850';
 const targetStableIdentityId = '59e5c303-bba8-46d0-a19c-26a6514938a7';
 const targetM2yId = 'M2Y-JKLM-NPQR-STUV-WXYZ';
 const expiresAtMs = 1_800_000_600_000;
+const safetyNumber = {
+  groups: [
+    '11111',
+    '22222',
+    '33333',
+    '44444',
+    '55555',
+    '66666',
+    '77777',
+    '88888',
+    '99999',
+    '00000',
+    '12345',
+    '67890',
+  ],
+} as const;
 const registration: IdentityRegistrationRequest = {
   authPublicKey: 'a'.repeat(64),
   deviceId: identity.deviceId,
@@ -56,6 +72,15 @@ function incomingInspection(): Extract<IdentityInspection, { kind: 'incomingRevi
   };
 }
 
+function awaitingInspection(): Extract<IdentityInspection, { kind: 'awaitingSafetyVerification' }> {
+  return {
+    kind: 'awaitingSafetyVerification',
+    identity,
+    request: incomingInspection().request,
+    safetyNumber,
+  };
+}
+
 const incomingEvent: PairingEvent = {
   cursor: 1,
   eventId: '5638cfaf-113e-496d-aa30-b5bb2cdbcfec',
@@ -72,8 +97,16 @@ function createPort(overrides: Partial<ProductionIdentityPort> = {}) {
     consumePairingRequestEvent: jest.fn(async () => incomingInspection()),
     inspectIdentity: jest.fn(async (): Promise<IdentityInspection> => ({ kind: 'absent' })),
     listPendingPairingPackets: jest.fn(async () => []),
+    listPendingPairingResponses: jest.fn(async () => []),
     prepareIdentity: jest.fn(async () => ({ identity, operationId, registration })),
     preparePairingPacket: jest.fn(async () => pairingPacket()),
+    preparePairingResponse: jest.fn(async () => ({
+      action: 'accept' as const,
+      operationId: pairingOperationId,
+      packet: 'r'.repeat(64),
+      requestId,
+      safetyNumber,
+    })),
     resetIdentity: jest.fn(async () => undefined),
     ...overrides,
   } satisfies ProductionIdentityPort;
@@ -129,6 +162,17 @@ describe('DefaultIdentityRelationshipController', () => {
         request: incomingInspection().request,
       },
       inspection: incomingInspection(),
+    },
+    {
+      expected: {
+        status: 'awaitingSafetyVerification',
+        identity,
+        localConfirmed: false,
+        remoteConfirmed: false,
+        request: incomingInspection().request,
+        safetyNumber,
+      },
+      inspection: awaitingInspection(),
     },
   ])('reports the stored identity as $inspection.kind', async ({ expected, inspection }) => {
     const controller = createController(createPort({ inspectIdentity: async () => inspection }));
@@ -316,8 +360,10 @@ describe('DefaultIdentityRelationshipController', () => {
       'consumePairingRequestEvent',
       'inspectIdentity',
       'listPendingPairingPackets',
+      'listPendingPairingResponses',
       'prepareIdentity',
       'preparePairingPacket',
+      'preparePairingResponse',
       'resetIdentity',
     ]);
   });
@@ -481,6 +527,85 @@ describe('DefaultIdentityRelationshipController', () => {
     });
   });
 
+  it('接受请求后提交加密响应，并只在服务端回执后展示安全码', async () => {
+    const port = createPort({ inspectIdentity: async () => incomingInspection() });
+    const api = createPairingApi();
+    const controller = createController(port, api);
+    await controller.inspect();
+
+    await expect(controller.respondToPairingRequest(requestId, 'accept')).resolves.toEqual({
+      ok: true,
+    });
+
+    expect(api.respondToPairRequest).toHaveBeenCalledWith(requestId, {
+      action: 'accept',
+      operationId: pairingOperationId,
+      packet: 'r'.repeat(64),
+    });
+    expect(port.acknowledgePairingPacket).toHaveBeenCalledWith(
+      pairingOperationId,
+      pairingOperationId,
+    );
+    expect(controller.getState()).toEqual({
+      status: 'awaitingSafetyVerification',
+      identity,
+      localConfirmed: false,
+      remoteConfirmed: false,
+      request: incomingInspection().request,
+      safetyNumber,
+    });
+  });
+
+  it('拒绝请求后提交加密响应，并保留明确的拒绝结果', async () => {
+    const port = createPort({
+      inspectIdentity: async () => incomingInspection(),
+      preparePairingResponse: jest.fn(async () => ({
+        action: 'reject' as const,
+        operationId: pairingOperationId,
+        packet: 'r'.repeat(64),
+        requestId,
+      })),
+    });
+    const api = createPairingApi();
+    const controller = createController(port, api);
+    await controller.inspect();
+
+    await expect(controller.respondToPairingRequest(requestId, 'reject')).resolves.toEqual({
+      ok: true,
+    });
+    expect(controller.getState()).toEqual({ status: 'rejected', identity, requestId });
+  });
+
+  it('重启后从原生 outbox 原样补交接受响应，不重新生成密文', async () => {
+    const port = createPort({
+      inspectIdentity: async () => awaitingInspection(),
+      listPendingPairingResponses: jest.fn(async () => [
+        {
+          action: 'accept' as const,
+          createdAtMs: 1_800_000_000_000,
+          operationId: pairingOperationId,
+          packet: 'r'.repeat(64),
+          requestId,
+          retryCount: 1,
+          safetyNumber,
+        },
+      ]),
+    });
+    const api = createPairingApi();
+    const controller = createController(port, api);
+
+    await controller.inspect();
+
+    expect(port.preparePairingResponse).not.toHaveBeenCalled();
+    expect(api.respondToPairRequest).toHaveBeenCalledWith(requestId, {
+      action: 'accept',
+      operationId: pairingOperationId,
+      packet: 'r'.repeat(64),
+    });
+    expect(port.acknowledgePairingPacket).toHaveBeenCalledTimes(1);
+    expect(controller.getState()).toMatchObject({ status: 'awaitingSafetyVerification' });
+  });
+
   it('缺少密文或收到尚未实现的事件时不推进游标对应的应用状态', async () => {
     const port = createPort({ inspectIdentity: async () => ({ kind: 'unpaired', identity }) });
     const controller = createController(port);
@@ -547,7 +672,18 @@ function createPairingApi() {
       Parameters<PairingApi['submitPairRequest']>
     >(async () => pairingSubmissionSuccess()),
     readEvents: unexpected,
-    respondToPairRequest: unexpected,
+    respondToPairRequest: jest.fn<
+      ReturnType<PairingApi['respondToPairRequest']>,
+      Parameters<PairingApi['respondToPairRequest']>
+    >(async (_requestId, input) => ({
+      ok: true,
+      value: {
+        eventCursor: 2,
+        operationId: input.operationId,
+        requestId,
+        status: input.action === 'accept' ? 'accepted' : 'rejected',
+      },
+    })),
     verifyPairRequest: unexpected,
     cancelPairRequest: unexpected,
   } satisfies PairingApi;

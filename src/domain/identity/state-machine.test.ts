@@ -19,7 +19,20 @@ const request: PairingRequestSummary = {
   requestId: 'request-1',
 };
 const safetyNumber: SafetyNumberDisplay = {
-  groups: ['12345', '23456', '34567', '45678', '56789', '67890'],
+  groups: [
+    '12345',
+    '23456',
+    '34567',
+    '45678',
+    '56789',
+    '67890',
+    '78901',
+    '89012',
+    '90123',
+    '01234',
+    '13579',
+    '24680',
+  ],
 };
 const relationship: RelationshipSummary = {
   activatedAtMs: 1_800_000_000_000,

@@ -78,9 +78,22 @@ export function PrimaryButton({
   );
 }
 
-export function SecondaryButton({ label, onPress }: { label: string; onPress: () => void }) {
+export function SecondaryButton({
+  disabled = false,
+  label,
+  onPress,
+}: {
+  disabled?: boolean;
+  label: string;
+  onPress: () => void;
+}) {
   return (
-    <MotionPressable accessibilityLabel={label} onPress={onPress} style={styles.secondaryButton}>
+    <MotionPressable
+      accessibilityLabel={label}
+      disabled={disabled}
+      onPress={onPress}
+      style={[styles.secondaryButton, disabled && styles.disabledButton]}
+    >
       <Text style={styles.secondaryButtonText}>{label}</Text>
     </MotionPressable>
   );

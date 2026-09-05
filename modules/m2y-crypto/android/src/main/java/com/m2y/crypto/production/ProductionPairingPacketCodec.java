@@ -6,7 +6,7 @@ import java.util.Map;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/** 生产配对首包的明文握手负载与加密 outbox 元数据；二者都使用严格版本化 JSON。 */
+/** 生产配对握手负载与加密 outbox 元数据；所有结构都使用严格版本化 JSON。 */
 final class ProductionPairingPacketCodec {
   private static final int SCHEMA_VERSION = 1;
   private static final String M2Y_ID_PATTERN =
@@ -34,6 +34,10 @@ final class ProductionPairingPacketCodec {
       String targetDeviceId,
       String targetM2yId,
       String targetStableIdentityId) {}
+
+  record Response(String action, String requestId) {}
+
+  record ResponsePacket(long createdAtMs, String action, String packet, String requestId) {}
 
   static String encodeHandshake(Handshake value) throws ProductionIdentityException {
     validateHandshake(value, "pairing-handshake-invalid");
@@ -78,6 +82,33 @@ final class ProductionPairingPacketCodec {
     }
   }
 
+  static String encodeResponse(Response value) throws ProductionIdentityException {
+    validateResponse(value, "pairing-response-invalid");
+    Map<String, Object> fields = new LinkedHashMap<>();
+    fields.put("action", value.action());
+    fields.put("requestId", value.requestId());
+    fields.put("schemaVersion", SCHEMA_VERSION);
+    return encode(fields, "pairing-response-invalid");
+  }
+
+  static Response decodeResponse(String json) throws ProductionIdentityException {
+    if (json == null || json.length() > 1_024) {
+      throw new ProductionIdentityException("pairing-response-corrupt");
+    }
+    try {
+      JSONObject value = new JSONObject(json);
+      if (value.length() != 3 || value.getInt("schemaVersion") != SCHEMA_VERSION) {
+        throw new ProductionIdentityException("pairing-response-corrupt");
+      }
+      Response response =
+          new Response(value.getString("action"), value.getString("requestId"));
+      validateResponse(response, "pairing-response-corrupt");
+      return response;
+    } catch (JSONException e) {
+      throw new ProductionIdentityException("pairing-response-corrupt", e);
+    }
+  }
+
   static String encodeOutgoing(OutgoingPacket value) throws ProductionIdentityException {
     validateOutgoing(value, "pairing-outbox-packet-invalid");
     Map<String, Object> fields = new LinkedHashMap<>();
@@ -117,6 +148,42 @@ final class ProductionPairingPacketCodec {
       return packet;
     } catch (JSONException e) {
       throw new ProductionIdentityException("pairing-outbox-packet-corrupt", e);
+    }
+  }
+
+  static String encodeResponsePacket(ResponsePacket value) throws ProductionIdentityException {
+    validateResponsePacket(value, "pairing-outbox-response-invalid");
+    Map<String, Object> fields = new LinkedHashMap<>();
+    fields.put("action", value.action());
+    fields.put("createdAtMs", value.createdAtMs());
+    fields.put("packet", value.packet());
+    fields.put("packetType", "pair-response");
+    fields.put("requestId", value.requestId());
+    fields.put("schemaVersion", SCHEMA_VERSION);
+    return encode(fields, "pairing-outbox-response-invalid");
+  }
+
+  static ResponsePacket decodeResponsePacket(String json) throws ProductionIdentityException {
+    if (json == null || json.length() > 32_768) {
+      throw new ProductionIdentityException("pairing-outbox-response-corrupt");
+    }
+    try {
+      JSONObject value = new JSONObject(json);
+      if (value.length() != 6
+          || value.getInt("schemaVersion") != SCHEMA_VERSION
+          || !"pair-response".equals(value.getString("packetType"))) {
+        throw new ProductionIdentityException("pairing-outbox-response-corrupt");
+      }
+      ResponsePacket packet =
+          new ResponsePacket(
+              value.getLong("createdAtMs"),
+              value.getString("action"),
+              value.getString("packet"),
+              value.getString("requestId"));
+      validateResponsePacket(packet, "pairing-outbox-response-corrupt");
+      return packet;
+    } catch (JSONException e) {
+      throw new ProductionIdentityException("pairing-outbox-response-corrupt", e);
     }
   }
 
@@ -163,6 +230,13 @@ final class ProductionPairingPacketCodec {
     }
   }
 
+  private static void validateResponse(Response value, String code)
+      throws ProductionIdentityException {
+    require(value != null, code);
+    require(matches(value.requestId(), UUID_PATTERN), code);
+    require("accept".equals(value.action()) || "reject".equals(value.action()), code);
+  }
+
   private static void validateOutgoing(OutgoingPacket value, String code)
       throws ProductionIdentityException {
     require(value != null, code);
@@ -171,6 +245,14 @@ final class ProductionPairingPacketCodec {
     require(matches(value.targetDeviceId(), UUID_PATTERN), code);
     require(matches(value.targetStableIdentityId(), UUID_PATTERN), code);
     require(matches(value.targetM2yId(), M2Y_ID_PATTERN), code);
+    requireBase64(value.packet(), 32, 24_576, code);
+  }
+
+  private static void validateResponsePacket(ResponsePacket value, String code)
+      throws ProductionIdentityException {
+    require(value != null, code);
+    require(value.createdAtMs() > 0, code);
+    validateResponse(new Response(value.action(), value.requestId()), code);
     requireBase64(value.packet(), 32, 24_576, code);
   }
 

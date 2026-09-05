@@ -377,7 +377,8 @@ final class ProductionIdentityDatabase extends SQLiteOpenHelper {
         database.query(
             "pairing_candidates",
             new String[] {
-              "peer_route_id", "status", "candidate_ciphertext", "expires_at_ms", "revision"
+              "peer_route_id", "status", "candidate_ciphertext", "safety_display_ciphertext",
+              "expires_at_ms", "revision"
             },
             "request_id = ?",
             new String[] {requestId},
@@ -392,8 +393,9 @@ final class ProductionIdentityDatabase extends SQLiteOpenHelper {
           cursor.getString(0),
           cursor.getString(1),
           cursor.getBlob(2),
-          cursor.getLong(3),
-          cursor.getLong(4));
+          cursor.isNull(3) ? null : cursor.getBlob(3),
+          cursor.getLong(4),
+          cursor.getLong(5));
     }
   }
 
@@ -402,8 +404,8 @@ final class ProductionIdentityDatabase extends SQLiteOpenHelper {
         database.query(
             "pairing_candidates",
             new String[] {
-              "request_id", "peer_route_id", "status", "candidate_ciphertext", "expires_at_ms",
-              "revision"
+              "request_id", "peer_route_id", "status", "candidate_ciphertext",
+              "safety_display_ciphertext", "expires_at_ms", "revision"
             },
             "status = ? AND expires_at_ms > ?",
             new String[] {
@@ -422,10 +424,62 @@ final class ProductionIdentityDatabase extends SQLiteOpenHelper {
           cursor.getString(1),
           cursor.getString(2),
           cursor.getBlob(3),
-          cursor.getLong(4),
-          cursor.getLong(5));
+          cursor.isNull(4) ? null : cursor.getBlob(4),
+          cursor.getLong(5),
+          cursor.getLong(6));
     }
   }
+
+  CandidateRow firstAcceptedCandidate(SQLiteDatabase database, long nowMs) {
+    try (Cursor cursor =
+        database.query(
+            "pairing_candidates",
+            new String[] {
+              "request_id", "peer_route_id", "status", "candidate_ciphertext",
+              "safety_display_ciphertext", "expires_at_ms", "revision"
+            },
+            "status = ? AND expires_at_ms > ?",
+            new String[] {
+              PairingProtocolRules.CandidateStatus.ACCEPTED.stored(), Long.toString(nowMs)
+            },
+            null,
+            null,
+            "rowid ASC",
+            "1")) {
+      if (!cursor.moveToFirst()) {
+        return null;
+      }
+      return new CandidateRow(
+          cursor.getString(0),
+          cursor.getString(1),
+          cursor.getString(2),
+          cursor.getBlob(3),
+          cursor.isNull(4) ? null : cursor.getBlob(4),
+          cursor.getLong(5),
+          cursor.getLong(6));
+    }
+  }
+
+  void updateCandidateResolution(
+      SQLiteDatabase database,
+      String requestId,
+      String status,
+      byte[] safetyDisplayCiphertext,
+      long revision) {
+    ContentValues values = new ContentValues();
+    values.put("status", status);
+    if (safetyDisplayCiphertext == null) {
+      values.putNull("safety_display_ciphertext");
+    } else {
+      values.put("safety_display_ciphertext", safetyDisplayCiphertext);
+    }
+    values.put("revision", revision);
+    if (database.update("pairing_candidates", values, "request_id = ?", new String[] {requestId})
+        != 1) {
+      throw new IllegalStateException("pairing-candidate-update-failed");
+    }
+  }
+
   void updateCandidateStatus(
       SQLiteDatabase database, String requestId, String status, long revision) {
     ContentValues values = new ContentValues();
@@ -464,6 +518,7 @@ final class ProductionIdentityDatabase extends SQLiteOpenHelper {
                 cursor.getString(0),
                 cursor.getString(1),
                 cursor.getString(2),
+                null,
                 null,
                 cursor.getLong(3),
                 cursor.getLong(4)));
@@ -755,6 +810,7 @@ final class ProductionIdentityDatabase extends SQLiteOpenHelper {
       String peerRouteId,
       String status,
       byte[] candidateCiphertext,
+      byte[] safetyDisplayCiphertext,
       long expiresAtMs,
       long revision) {}
 

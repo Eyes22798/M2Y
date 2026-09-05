@@ -55,6 +55,7 @@ function createStore(initial: IdentityRelationshipState) {
     createIdentity: jest.fn(async () => undefined),
     resetLocalData: jest.fn(async () => undefined),
     retry: jest.fn(async () => undefined),
+    respondToPairingRequest: jest.fn(async () => ({ ok: true as const })),
     startM2yPairing: jest.fn(async () => ({ ok: true as const })),
   };
   return {
@@ -175,7 +176,22 @@ describe('useIdentityRouteGuard', () => {
       localConfirmed: false,
       remoteConfirmed: false,
       request: request(),
-      safetyNumber: { groups: ['11111', '22222', '33333', '44444', '55555', '66666'] },
+      safetyNumber: {
+        groups: [
+          '11111',
+          '22222',
+          '33333',
+          '44444',
+          '55555',
+          '66666',
+          '77777',
+          '88888',
+          '99999',
+          '00000',
+          '12345',
+          '67890',
+        ],
+      },
     });
     expect(view.getByText('guard:/verify-safety-number')).toBeTruthy();
   });

@@ -20,8 +20,8 @@ import org.signal.libsignal.protocol.UntrustedIdentityException;
 import org.signal.libsignal.protocol.message.CiphertextMessage;
 import org.signal.libsignal.protocol.message.PreKeySignalMessage;
 
-/** 只负责生产 M2Y-ID 首包：PQXDH 会话变更与可恢复 outbox 在同一 SQLite 事务提交。 */
-final class ProductionPairingProtocolEngine {
+/** 负责生产 M2Y-ID 握手密文，并让会话变更与可恢复 outbox 处于同一 SQLite 事务。 */
+final class ProductionPairingProtocolEngine implements PairingResponsePacketFactory {
   private static final Base64.Encoder BASE64_URL_ENCODER =
       Base64.getUrlEncoder().withoutPadding();
   private static final long RECORD_REVISION = 1;
@@ -140,6 +140,48 @@ final class ProductionPairingProtocolEngine {
     }
   }
 
+  /** 使用首包已经建立的双棘轮会话生成接受或拒绝响应；事务由候选状态存储统一持有。 */
+  @Override
+  public ProductionPairingPacketCodec.ResponsePacket createResponsePacket(
+      SQLiteDatabase connection,
+      ProductionIdentityDatabase.IdentityProjection localIdentity,
+      int localRegistrationId,
+      String requestId,
+      String action,
+      long nowMs)
+      throws ProductionIdentityException {
+    byte[] plaintext =
+        ProductionPairingPacketCodec.encodeResponse(
+                new ProductionPairingPacketCodec.Response(action, requestId))
+            .getBytes(StandardCharsets.UTF_8);
+    try {
+      ProductionSignalProtocolStore store =
+          new ProductionSignalProtocolStore(
+              connection, database, recordCipher, localRegistrationId, nowMs);
+      SignalProtocolAddress localAddress =
+          new SignalProtocolAddress(localIdentity.stableIdentityId(), 1);
+      SignalProtocolAddress remoteAddress = new SignalProtocolAddress(requestId, 1);
+      CiphertextMessage ciphertext =
+          new SessionCipher(store, localAddress, remoteAddress).encrypt(plaintext);
+      if (ciphertext.getType() != CiphertextMessage.WHISPER_TYPE) {
+        throw new ProductionIdentityException("pairing-response-not-ratcheted");
+      }
+      return new ProductionPairingPacketCodec.ResponsePacket(
+          nowMs,
+          action,
+          BASE64_URL_ENCODER.encodeToString(ciphertext.serialize()),
+          requestId);
+    } catch (ProductionProtocolStoreFailure error) {
+      throw error.failure();
+    } catch (UntrustedIdentityException | NoSessionException error) {
+      throw new ProductionIdentityException("pairing-response-encrypt-failed", error);
+    } catch (RuntimeException error) {
+      throw new ProductionIdentityException("pairing-response-encrypt-failed", error);
+    } finally {
+      Arrays.fill(plaintext, (byte) 0);
+    }
+  }
+
   /** 解密并提交目标端收到的首包；session、prekey 消耗、可信身份与 candidate 同事务落盘。 */
   void consumePairingRequestEvent(
       SQLiteDatabase connection,
@@ -230,6 +272,23 @@ final class ProductionPairingProtocolEngine {
     }
   }
 
+  ProductionPairingPacketCodec.ResponsePacket decodeResponseOutbox(
+      ProductionIdentityDatabase.OutboxRow row) throws ProductionIdentityException {
+    byte[] plaintext =
+        recordCipher.decrypt("outbox", row.operationId(), RECORD_REVISION, row.ciphertext());
+    try {
+      ProductionPairingPacketCodec.ResponsePacket packet =
+          ProductionPairingPacketCodec.decodeResponsePacket(
+              new String(plaintext, StandardCharsets.UTF_8));
+      if (!packet.requestId().equals(row.requestId()) || !"pair-response".equals(row.packetType())) {
+        throw new ProductionIdentityException("pairing-outbox-response-corrupt");
+      }
+      return packet;
+    } finally {
+      Arrays.fill(plaintext, (byte) 0);
+    }
+  }
+
   ProductionPairingPacketCodec.OutgoingPacket inspectAcknowledgedOutgoing(
       SQLiteDatabase connection, long nowMs) throws ProductionIdentityException {
     ProductionIdentityDatabase.OutboxRow row =
@@ -281,4 +340,16 @@ final class ProductionPairingProtocolEngine {
     }
     PairingProtocolRules.requireBoundedWindow(handshake.expiresAtMs(), nowMs);
   }
+}
+
+/** 允许持久化 instrumentation 测试注入不依赖真实双端会话的固定响应密文。 */
+interface PairingResponsePacketFactory {
+  ProductionPairingPacketCodec.ResponsePacket createResponsePacket(
+      SQLiteDatabase connection,
+      ProductionIdentityDatabase.IdentityProjection localIdentity,
+      int localRegistrationId,
+      String requestId,
+      String action,
+      long nowMs)
+      throws ProductionIdentityException;
 }

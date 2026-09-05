@@ -5,6 +5,7 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { PrimaryButton, SecondaryButton } from '@/design/patterns/GateShell';
 import { ScreenScaffold } from '@/design/primitives/ScreenScaffold';
 import { colors, radius, spacing, typography } from '@/design/tokens';
+import type { PairingResponseAction } from '@/application/identity/contracts';
 import type { IdentityRelationshipState, IdentitySummary } from '@/domain/identity/types';
 import {
   IdentityReadyStep,
@@ -23,11 +24,14 @@ export function PairingStatusScreen({
 }: {
   onEnterWorkspace?: (() => void) | undefined;
 }) {
-  const { access, retry, startM2yPairing, state } = useIdentityRelationship();
+  const { access, respondToPairingRequest, retry, startM2yPairing, state } =
+    useIdentityRelationship();
   const [setupStep, setSetupStep] = useState<PairingSetupStep>('identity-ready');
   const [targetM2yId, setTargetM2yId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [decisionSubmitting, setDecisionSubmitting] = useState<PairingResponseAction | null>(null);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
   const identity = identityOf(state);
   const transportUnavailable =
     access.kind === 'granted' && access.reason === 'pairing-transport-unavailable';
@@ -41,6 +45,21 @@ export function PairingStatusScreen({
     const result = await startM2yPairing(targetM2yId);
     setSubmitting(false);
     if (!result.ok) setFormError(pairingErrorMessage(result.reason));
+  };
+
+  const submitDecision = async (action: PairingResponseAction) => {
+    if (decisionSubmitting || state.status !== 'incomingReview') return;
+    setDecisionSubmitting(action);
+    setDecisionError(null);
+    const result = await respondToPairingRequest(state.request.requestId, action);
+    setDecisionSubmitting(null);
+    if (!result.ok) {
+      setDecisionError(
+        result.reason === 'pairing-operation-busy'
+          ? '正在处理上一项操作，请稍后再试。'
+          : '响应暂未送达。请检查网络后重试，已经生成的加密响应不会重复创建。',
+      );
+    }
   };
 
   return (
@@ -99,6 +118,25 @@ export function PairingStatusScreen({
             <Text style={styles.pendingBody}>
               请求已在本机完成端到端解密和身份绑定校验。你尚未接受，对方还不能成为你的关系。
             </Text>
+            <View style={styles.decisionActions}>
+              <PrimaryButton
+                disabled={decisionSubmitting !== null}
+                label={decisionSubmitting === 'accept' ? '正在接受…' : '接受并核对安全码'}
+                onPress={() => void submitDecision('accept')}
+              />
+              <SecondaryButton
+                disabled={decisionSubmitting !== null}
+                label={decisionSubmitting === 'reject' ? '正在拒绝…' : '拒绝请求'}
+                onPress={() => void submitDecision('reject')}
+              />
+            </View>
+            {decisionError ? <Text style={styles.decisionError}>{decisionError}</Text> : null}
+          </View>
+        ) : null}
+        {state.status === 'rejected' ? (
+          <View style={styles.notice}>
+            <Text style={styles.noticeTitle}>已拒绝连接请求</Text>
+            <Text style={styles.noticeBody}>对方已收到加密拒绝响应，本机没有建立关系。</Text>
           </View>
         ) : null}
         {transportUnavailable ? (
@@ -244,6 +282,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceRaised,
   },
   incomingLabel: { ...typography.label, color: colors.accent },
+  decisionActions: { gap: spacing.sm, paddingTop: spacing.sm },
+  decisionError: { ...typography.caption, color: colors.danger },
   notice: {
     gap: spacing.sm,
     padding: spacing.lg,

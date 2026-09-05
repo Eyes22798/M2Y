@@ -2,6 +2,7 @@ import type {
   IdentityRelationshipState,
   IdentitySummary,
   PairingRequestSummary,
+  SafetyNumberDisplay,
 } from '@/domain/identity/types';
 import type {
   IdentityRegistrationRequest,
@@ -27,6 +28,12 @@ export type IdentityInspection =
       kind: 'incomingReview';
       identity: IdentitySummary;
       request: PairingRequestSummary;
+    }>
+  | Readonly<{
+      kind: 'awaitingSafetyVerification';
+      identity: IdentitySummary;
+      request: PairingRequestSummary;
+      safetyNumber: SafetyNumberDisplay;
     }>;
 
 /**
@@ -56,6 +63,34 @@ export type PendingPairingPacket = PreparedPairingPacket &
     createdAtMs: number;
     retryCount: number;
   }>;
+
+export type PairingResponseAction = 'accept' | 'reject';
+
+/** native 已提交候选状态、安全码（仅接受）与响应 outbox 后的严格结果。 */
+export type PreparedPairingResponse =
+  | Readonly<{
+      action: 'accept';
+      operationId: string;
+      packet: string;
+      requestId: string;
+      safetyNumber: SafetyNumberDisplay;
+    }>
+  | Readonly<{
+      action: 'reject';
+      operationId: string;
+      packet: string;
+      requestId: string;
+    }>;
+
+export type PendingPairingResponse = PreparedPairingResponse &
+  Readonly<{
+    createdAtMs: number;
+    retryCount: number;
+  }>;
+
+export type RespondToPairingRequestResult =
+  | Readonly<{ ok: true }>
+  | Readonly<{ ok: false; reason: 'pairing-operation-busy' | 'pairing-transport-unavailable' }>;
 
 export type StartM2yPairingResult =
   | Readonly<{ ok: true }>
@@ -88,7 +123,12 @@ export interface ProductionIdentityPort {
     expiresAtMs: number,
     targetBundle: LeasedPublicBundle,
   ): Promise<PreparedPairingPacket>;
+  preparePairingResponse(
+    requestId: string,
+    action: PairingResponseAction,
+  ): Promise<PreparedPairingResponse>;
   listPendingPairingPackets(): Promise<readonly PendingPairingPacket[]>;
+  listPendingPairingResponses(): Promise<readonly PendingPairingResponse[]>;
   acknowledgePairingPacket(operationId: string, receiptId: string): Promise<void>;
   resetIdentity(): Promise<void>;
 }
@@ -105,6 +145,10 @@ export interface IdentityRelationshipController extends PairingEventConsumer {
   inspect(): Promise<void>;
   createIdentity(displayName: string | null): Promise<void>;
   startM2yPairing(m2yId: string): Promise<StartM2yPairingResult>;
+  respondToPairingRequest(
+    requestId: string,
+    action: PairingResponseAction,
+  ): Promise<RespondToPairingRequestResult>;
   resetLocalData(): Promise<void>;
   retry(): Promise<void>;
 }

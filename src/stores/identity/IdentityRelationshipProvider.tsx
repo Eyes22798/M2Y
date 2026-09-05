@@ -11,6 +11,8 @@ import { AppState, type AppStateStatus } from 'react-native';
 import type { PublicConfigResult } from '@/application/config/contracts';
 import type {
   IdentityRelationshipController,
+  PairingResponseAction,
+  RespondToPairingRequestResult,
   StartM2yPairingResult,
 } from '@/application/identity/contracts';
 import type { PairingPollingController } from '@/application/pairing/contracts';
@@ -25,6 +27,10 @@ type IdentityRelationshipValue = Readonly<{
   state: IdentityRelationshipState;
   createIdentity: (displayName: string | null) => Promise<void>;
   startM2yPairing: (m2yId: string) => Promise<StartM2yPairingResult>;
+  respondToPairingRequest: (
+    requestId: string,
+    action: PairingResponseAction,
+  ) => Promise<RespondToPairingRequestResult>;
   resetLocalData: () => Promise<void>;
   retry: () => Promise<void>;
 }>;
@@ -70,6 +76,8 @@ export function IdentityRelationshipProvider({
       state,
       createIdentity: (displayName) => controller.createIdentity(displayName),
       startM2yPairing: (m2yId) => controller.startM2yPairing(m2yId),
+      respondToPairingRequest: (requestId, action) =>
+        controller.respondToPairingRequest(requestId, action),
       resetLocalData: () => controller.resetLocalData(),
       retry: () => controller.retry(),
     }),

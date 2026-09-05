@@ -19,17 +19,17 @@ import {
   decodeProductionPairingAcknowledgement,
   decodeProductionPairingActivation,
   decodeProductionPairingConfirmation,
-  decodeProductionPairingDecision,
   decodeProductionPairingOutbox,
   decodeProductionPreparedPairingPacket,
+  decodeProductionPreparedPairingResponse,
   decodeProductionPairingSweep,
   type ProductionPairingAcknowledgement,
   type ProductionPairingAction,
   type ProductionPairingActivation,
   type ProductionPairingConfirmation,
-  type ProductionPairingDecision,
   type ProductionPairingOutbox,
   type ProductionPreparedPairingPacket,
+  type ProductionPreparedPairingResponse,
   type ProductionPairingSweep,
 } from './M2YCryptoPairingContract';
 import {
@@ -52,6 +52,7 @@ export type {
   ProductionPairingOutbox,
   ProductionPairingOutboxItem,
   ProductionPreparedPairingPacket,
+  ProductionPreparedPairingResponse,
   ProductionPairingSweep,
 } from './M2YCryptoPairingContract';
 export type {
@@ -144,11 +145,11 @@ export function prepareM2YPairingPacket(
  */
 export function respondToM2YPairingRequest(
   requestId: string,
-  action: ProductionPairingAction,
-): Promise<ProductionPairingDecision> {
+  action: Extract<ProductionPairingAction, 'accept' | 'reject'>,
+): Promise<ProductionPreparedPairingResponse> {
   return callNative(
     () => respondToNativePairingRequest(requestId, action),
-    decodeProductionPairingDecision,
+    decodeProductionPreparedPairingResponse,
   );
 }
 

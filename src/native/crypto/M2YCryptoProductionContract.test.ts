@@ -102,6 +102,27 @@ describe('production identity native contracts', () => {
       peerM2yId: 'M2Y-JKLM-NPQR-STUV-WXYZ',
       status: 'incomingReview',
     });
+    expect(
+      decodeProductionIdentityInspection({
+        deviceId,
+        expiresAtMs: 1_800_000_600_000,
+        m2yId,
+        method: 'm2y-id',
+        peerDeviceId: 'b64a01a1-546a-47f8-8920-52e9444fe850',
+        peerM2yId: 'M2Y-JKLM-NPQR-STUV-WXYZ',
+        peerStableIdentityId: '59e5c303-bba8-46d0-a19c-26a6514938a7',
+        registeredAtMs: 1_800_000_000_000,
+        requestId: '9d923119-0e58-4cfa-a191-5397585790bc',
+        revision: 5,
+        safetyNumber: Array.from({ length: 12 }, (_, index) => String(index).padStart(5, '0')),
+        schemaVersion: 1,
+        stableIdentityId,
+        status: 'awaitingSafetyVerification',
+      }),
+    ).toMatchObject({
+      safetyNumber: expect.arrayContaining(['00000', '00011']),
+      status: 'awaitingSafetyVerification',
+    });
   });
 
   it('accepts one exact public registration bundle', () => {

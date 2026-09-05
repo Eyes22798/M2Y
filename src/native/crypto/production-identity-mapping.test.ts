@@ -100,6 +100,40 @@ describe('toIdentityInspection', () => {
       },
     });
   });
+
+  it('把已接受候选恢复为可核对的安全码状态', () => {
+    const safetyNumber = [
+      '00000',
+      '00001',
+      '00002',
+      '00003',
+      '00004',
+      '00005',
+      '00006',
+      '00007',
+      '00008',
+      '00009',
+      '00010',
+      '00011',
+    ] as const;
+    expect(
+      toIdentityInspection({
+        ...summary,
+        expiresAtMs: 1_800_000_600_000,
+        method: 'm2y-id',
+        peerDeviceId: 'b64a01a1-546a-47f8-8920-52e9444fe850',
+        peerM2yId: 'M2Y-JKLM-NPQR-STUV-WXYZ',
+        peerStableIdentityId: '59e5c303-bba8-46d0-a19c-26a6514938a7',
+        registeredAtMs: 1_800_000_000_000,
+        requestId: '9d923119-0e58-4cfa-a191-5397585790bc',
+        safetyNumber,
+        status: 'awaitingSafetyVerification',
+      }),
+    ).toMatchObject({
+      kind: 'awaitingSafetyVerification',
+      safetyNumber: { groups: safetyNumber },
+    });
+  });
 });
 
 describe('toIdentityDraft', () => {

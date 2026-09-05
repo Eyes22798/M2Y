@@ -5,6 +5,7 @@ import {
   decodeProductionPairingDecision,
   decodeProductionPairingOutbox,
   decodeProductionPreparedPairingPacket,
+  decodeProductionPreparedPairingResponse,
   decodeProductionPairingSweep,
 } from './M2YCryptoPairingContract';
 
@@ -22,6 +23,7 @@ const outboxItem = {
   createdAtMs,
   decision: 'accept',
   operationId,
+  packet,
   packetType: 'pair-response',
   requestId,
   retryCount: 0,
@@ -117,6 +119,34 @@ describe('pairing native contracts', () => {
     );
   });
 
+  it('严格解码接受与拒绝响应，并只允许接受结果携带安全码', () => {
+    const safetyNumber = Array.from({ length: 12 }, (_, index) => String(index).padStart(5, '0'));
+    const accepted = {
+      operationId,
+      packet,
+      requestId,
+      safetyNumber,
+      schemaVersion: 1,
+      status: 'accepted',
+    } as const;
+    const rejected = {
+      operationId,
+      packet,
+      requestId,
+      schemaVersion: 1,
+      status: 'rejected',
+    } as const;
+
+    expect(decodeProductionPreparedPairingResponse(accepted)).toEqual(accepted);
+    expect(decodeProductionPreparedPairingResponse(rejected)).toEqual(rejected);
+    expect(() => decodeProductionPreparedPairingResponse({ ...rejected, safetyNumber })).toThrow(
+      invalid,
+    );
+    expect(() =>
+      decodeProductionPreparedPairingResponse({ ...accepted, safetyNumber: safetyNumber.slice(1) }),
+    ).toThrow(invalid);
+  });
+
   it('accepts an empty outbox and preserves the native order of a populated one', () => {
     expect(decodeProductionPairingOutbox({ items: [], schemaVersion: 1 })).toEqual({
       items: [],
@@ -124,10 +154,11 @@ describe('pairing native contracts', () => {
     });
 
     const verify = {
-      ...outboxItem,
+      createdAtMs,
       decision: 'confirm',
       operationId: otherOperationId,
       packetType: 'pair-verify',
+      requestId,
       retryCount: 3,
     };
     expect(
@@ -185,7 +216,7 @@ describe('pairing native contracts', () => {
       items: [{ ...outboxItem, decision: 'submit', packetType: 'pair-request' }],
       schemaVersion: 1,
     },
-    { items: [{ ...outboxItem, packet, packetType: 'pair-response' }], schemaVersion: 1 },
+    { items: [{ ...outboxItem, packet: 'short' }], schemaVersion: 1 },
     { items: [outboxItem, outboxItem], schemaVersion: 1 },
     { items: {}, schemaVersion: 1 },
     { items: [], schemaVersion: 1, total: 0 },

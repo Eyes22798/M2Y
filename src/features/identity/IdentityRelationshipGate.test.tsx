@@ -45,6 +45,7 @@ function createController(state: IdentityRelationshipState): IdentityRelationshi
     createIdentity: jest.fn(async () => undefined),
     resetLocalData: jest.fn(async () => undefined),
     retry: jest.fn(async () => undefined),
+    respondToPairingRequest: jest.fn(async () => ({ ok: true as const })),
     startM2yPairing: jest.fn(async () => ({ ok: true as const })),
   };
 }
@@ -196,7 +197,7 @@ describe('IdentityRelationshipGate', () => {
   });
 
   it('仅在原生提交候选后展示已验证来源的传入请求摘要', async () => {
-    const { view } = await renderGate(
+    const { controller, view } = await renderGate(
       {
         status: 'incomingReview',
         identity,
@@ -216,6 +217,17 @@ describe('IdentityRelationshipGate', () => {
     expect(view.getByText('收到连接请求')).toBeTruthy();
     expect(view.getByText('M2Y-JKLM-NPQR-STUV-WXYZ')).toBeTruthy();
     expect(view.getByText(/尚未接受/u)).toBeTruthy();
+    expect(view.getByLabelText('接受并核对安全码')).toBeTruthy();
+    expect(view.getByLabelText('拒绝请求')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('接受并核对安全码'));
+    });
+    await waitFor(() =>
+      expect(controller.respondToPairingRequest).toHaveBeenCalledWith(
+        '9d923119-0e58-4cfa-a191-5397585790bc',
+        'accept',
+      ),
+    );
     expect(view.queryByText('private workspace')).toBeNull();
   });
 

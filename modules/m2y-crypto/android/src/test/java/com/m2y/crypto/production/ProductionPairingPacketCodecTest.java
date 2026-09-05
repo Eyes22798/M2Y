@@ -93,4 +93,27 @@ public final class ProductionPairingPacketCodecTest {
         ProductionIdentityException.class,
         () -> ProductionPairingPacketCodec.decodeOutgoing(valid.substring(0, valid.length() - 1) + ",\"secret\":true}"));
   }
+
+  @Test
+  public void responsePayloadAndOutboxRoundTripStrictly() throws Exception {
+    ProductionPairingPacketCodec.Response response =
+        new ProductionPairingPacketCodec.Response("accept", REQUEST_ID);
+    ProductionPairingPacketCodec.ResponsePacket packet =
+        new ProductionPairingPacketCodec.ResponsePacket(
+            1_800_000_000_000L, "accept", "r".repeat(64), REQUEST_ID);
+
+    String encodedResponse = ProductionPairingPacketCodec.encodeResponse(response);
+    String encodedPacket = ProductionPairingPacketCodec.encodeResponsePacket(packet);
+
+    assertEquals(response, ProductionPairingPacketCodec.decodeResponse(encodedResponse));
+    assertEquals(packet, ProductionPairingPacketCodec.decodeResponsePacket(encodedPacket));
+    assertThrows(
+        ProductionIdentityException.class,
+        () -> ProductionPairingPacketCodec.decodeResponse(encodedResponse.replace("accept", "cancel")));
+    assertThrows(
+        ProductionIdentityException.class,
+        () ->
+            ProductionPairingPacketCodec.decodeResponsePacket(
+                encodedPacket.substring(0, encodedPacket.length() - 1) + ",\"secret\":true}"));
+  }
 }

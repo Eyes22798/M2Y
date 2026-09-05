@@ -21,7 +21,11 @@ import type {
   IdentityInspection,
   IdentityRelationshipController,
   PendingPairingPacket,
+  PendingPairingResponse,
+  PairingResponseAction,
   PreparedPairingPacket,
+  PreparedPairingResponse,
+  RespondToPairingRequestResult,
   StartM2yPairingResult,
 } from './contracts';
 
@@ -67,6 +71,16 @@ export class DefaultIdentityRelationshipController implements IdentityRelationsh
       return Promise.resolve({ ok: false, reason: 'm2y-id-invalid' });
     }
     return this.runExclusiveResult(() => this.startM2yPairingInternal(m2yId), {
+      ok: false,
+      reason: 'pairing-operation-busy',
+    });
+  }
+
+  respondToPairingRequest(
+    requestId: string,
+    action: PairingResponseAction,
+  ): Promise<RespondToPairingRequestResult> {
+    return this.runExclusiveResult(() => this.respondToPairingRequestInternal(requestId, action), {
       ok: false,
       reason: 'pairing-operation-busy',
     });
@@ -146,6 +160,14 @@ export class DefaultIdentityRelationshipController implements IdentityRelationsh
           request: inspection.request,
         });
         return;
+      case 'awaitingSafetyVerification':
+        this.transition({
+          type: 'inspectAwaitingSafetyVerification',
+          identity: inspection.identity,
+          request: inspection.request,
+          safetyNumber: inspection.safetyNumber,
+        });
+        return;
       default:
         return assertNever(inspection);
     }
@@ -155,8 +177,11 @@ export class DefaultIdentityRelationshipController implements IdentityRelationsh
     await this.inspectInternal();
     if (!this.dependencies.pairingApi) return;
 
-    if (this.state.status === 'unpaired') {
-      await this.resumePairingOutbox();
+    if (this.state.status === 'unpaired' || this.state.status === 'awaitingSafetyVerification') {
+      const resumedResponse = await this.resumePairingResponseOutbox();
+      if (!resumedResponse && this.state.status === 'unpaired') {
+        await this.resumePairingOutbox();
+      }
       return;
     }
     if (this.state.status !== 'registering') return;
@@ -256,6 +281,33 @@ export class DefaultIdentityRelationshipController implements IdentityRelationsh
       : { ok: false, reason: 'pairing-transport-unavailable' };
   }
 
+  private async respondToPairingRequestInternal(
+    requestId: string,
+    action: PairingResponseAction,
+  ): Promise<RespondToPairingRequestResult> {
+    if (this.state.status !== 'incomingReview' || this.state.request.requestId !== requestId) {
+      return { ok: false, reason: 'pairing-operation-busy' };
+    }
+    if (!this.dependencies.pairingApi) {
+      return { ok: false, reason: 'pairing-transport-unavailable' };
+    }
+
+    let response: PreparedPairingResponse;
+    try {
+      response = await this.dependencies.identityStore.preparePairingResponse(requestId, action);
+    } catch {
+      this.transition({ type: 'fatal', code: 'pairing-response-prepare-failed', retryable: true });
+      return { ok: false, reason: 'pairing-transport-unavailable' };
+    }
+    if (response.requestId !== requestId || response.action !== action) {
+      this.transition({ type: 'recoveryRequired', code: 'pairing-response-binding-invalid' });
+      return { ok: false, reason: 'pairing-transport-unavailable' };
+    }
+    return (await this.submitAndCommitPairingResponse(response, true))
+      ? { ok: true }
+      : { ok: false, reason: 'pairing-transport-unavailable' };
+  }
+
   private async applyEventsInternal(
     events: readonly PairingEvent[],
   ): Promise<PairingEventApplyResult> {
@@ -311,6 +363,24 @@ export class DefaultIdentityRelationshipController implements IdentityRelationsh
     if (packet) await this.submitAndCommitPairingPacket(packet);
   }
 
+  private async resumePairingResponseOutbox(): Promise<boolean> {
+    let responses: readonly PendingPairingResponse[];
+    try {
+      responses = await this.dependencies.identityStore.listPendingPairingResponses();
+    } catch {
+      this.transition({ type: 'fatal', code: 'pairing-outbox-unreadable', retryable: true });
+      return true;
+    }
+    if (responses.length === 0) return false;
+    if (responses.length !== 1) {
+      this.transition({ type: 'recoveryRequired', code: 'pairing-outbox-conflict' });
+      return true;
+    }
+    const response = responses[0];
+    if (response) await this.submitAndCommitPairingResponse(response, false);
+    return true;
+  }
+
   private async submitAndCommitPairingPacket(packet: PreparedPairingPacket): Promise<boolean> {
     const api = this.dependencies.pairingApi;
     if (!api) return false;
@@ -351,6 +421,57 @@ export class DefaultIdentityRelationshipController implements IdentityRelationsh
       type: 'pairRequestPrepared',
       request: pairingRequestOf(packet),
     });
+    return true;
+  }
+
+  private async submitAndCommitPairingResponse(
+    response: PreparedPairingResponse,
+    publishOutcome: boolean,
+  ): Promise<boolean> {
+    const api = this.dependencies.pairingApi;
+    if (!api) return false;
+
+    let submitted;
+    try {
+      submitted = await api.respondToPairRequest(response.requestId, {
+        action: response.action,
+        operationId: response.operationId,
+        packet: response.packet,
+      });
+    } catch {
+      this.transition({ type: 'networkFailed', retryFrom: 'incomingReview' });
+      return false;
+    }
+    if (!submitted.ok) {
+      this.handlePairingTransportFailure(submitted.failure, 'incomingReview');
+      return false;
+    }
+    const expectedStatus = response.action === 'accept' ? 'accepted' : 'rejected';
+    if (
+      submitted.value.operationId !== response.operationId ||
+      submitted.value.requestId !== response.requestId ||
+      submitted.value.status !== expectedStatus
+    ) {
+      this.transition({ type: 'recoveryRequired', code: 'pairing-response-receipt-invalid' });
+      return false;
+    }
+
+    try {
+      await this.dependencies.identityStore.acknowledgePairingPacket(
+        response.operationId,
+        submitted.value.operationId,
+      );
+    } catch {
+      this.transition({ type: 'fatal', code: 'pairing-response-commit-failed', retryable: true });
+      return false;
+    }
+    if (publishOutcome) {
+      this.transition(
+        response.action === 'accept'
+          ? { type: 'pairRequestAccepted', safetyNumber: response.safetyNumber }
+          : { type: 'requestRejected' },
+      );
+    }
     return true;
   }
 
@@ -416,7 +537,7 @@ export class DefaultIdentityRelationshipController implements IdentityRelationsh
 
   private handlePairingTransportFailure(
     failure: PairingApiFailure,
-    retryFrom: 'unpaired' | 'outgoingPending',
+    retryFrom: 'unpaired' | 'outgoingPending' | 'incomingReview',
   ): void {
     if (isRetryableTransportFailure(failure)) {
       this.transition({ type: 'networkFailed', retryFrom });

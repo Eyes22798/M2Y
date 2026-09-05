@@ -48,6 +48,15 @@ export function identityRelationshipReducer(
             identity: event.identity,
             request: event.request,
           };
+        case 'inspectAwaitingSafetyVerification':
+          return {
+            status: 'awaitingSafetyVerification',
+            identity: event.identity,
+            localConfirmed: false,
+            remoteConfirmed: false,
+            request: event.request,
+            safetyNumber: event.safetyNumber,
+          };
         default:
           return state;
       }
